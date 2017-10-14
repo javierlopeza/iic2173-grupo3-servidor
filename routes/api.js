@@ -198,6 +198,48 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 	}
 });
 
+/* -----------
+POST /token
+--------------
+body = {
+  username: "arquitran@uc.cl",
+  password: "123123"
+}
+
+HEADERS:
+"Authorization" : "JWT dad7asciha7..."
+--------------*/
+router.post('/token', passport.authenticate('jwt', { session: false}), function(req, res){
+	var token = getToken(req.headers);
+	if (token) {
+		
+		User.findOne({
+			username: req.body.username
+		}, function (err, user) {
+			if (err) throw err;
+
+			if (!user) {
+				res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+			} else {
+				// check if password matches
+				user.comparePassword(req.body.password, function (err, isMatch) {
+					if (isMatch && !err) {
+						// if user is found and password is right create a token
+						var token = jwt.sign(user, config.secret);
+						// return the information including token as JSON
+						res.json({ success: true, token: 'JWT ' + token });
+					} else {
+						res.status(401).send({ success: false, msg: 'Authentication failed. Wrong password.' });
+					}
+				});
+			}
+		});
+		
+	} else {
+		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	}
+});
+
 // Parse authorization token from request headers
 getToken = function (headers) {
 	if (headers && headers.authorization) {
