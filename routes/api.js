@@ -58,7 +58,7 @@ router.post('/signin', function (req, res) {
 			user.comparePassword(req.body.password, function (err, isMatch) {
 				if (isMatch && !err) {
 					// if user is found and password is right create a token
-					var token = jwt.sign(user, config.secret);
+					var token = jwt.sign(user, config.secret, {expiresIn: '20m'});
 					// return the information including token as JSON
 					res.json({ success: true, token: 'JWT ' + token });
 				} else {
@@ -106,9 +106,11 @@ GET /product/:id
 ---------------
 HEADERS:
 "Authorization" : "JWT dad7asciha7..."
+"Username" : "arquitan@uc.cl"
 --------------- */
 router.get('/product/:id', passport.authenticate('jwt', { session: false }), function (req, res) {
 	// Check if 'id' is valid
+	console.log("asd")
 	if (/^\d+$/.test(req.param('id')) == false) {
 		return res.status(400).send({ success: false, msg: 'Bad request.' });
 	}
