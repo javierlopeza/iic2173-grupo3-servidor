@@ -129,7 +129,7 @@ router.get('/product/:id', passport.authenticate('jwt', { session: false }), fun
 				http.get(`${LEGACY_API}/categorias/${product.category}`, (resp) => {
 					let category = '';
 					resp.on('data', (chunk) => { category += chunk; });
-					resp.on('end', () => { 
+					resp.on('end', () => {
 						category = JSON.parse(category);
 						product.category = category;
 						product.success = true;
@@ -158,8 +158,33 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 
 	var token = getToken(req.headers);
 	if (token) {
+		http.get(`${LEGACY_API}/productos?page=${req.query.page}`, (resp) => {
+			let data = '';
+			// A chunk of data has been received.
+			resp.on('data', (chunk) => { data += chunk; });
+			// The whole response has been received. Print out the result.
+			resp.on('end', () => {
+				return res.json(JSON.parse(data));
+			});
+		}).on("error", (err) => {
+			return res.status(400).send({ success: false, msg: 'Bad request.' });
+		});
+	} else {
+		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	}
+});
 
-		http.get(`${LEGACY_API}/productos/`, (resp) => {
+/* ------------
+GET /categories
+---------------
+HEADERS:
+"Authorization" : "JWT dad7asciha7..."
+--------------- */
+router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res) {
+
+	var token = getToken(req.headers);
+	if (token) {
+		http.get(`${LEGACY_API}/categorias?page=${req.query.page}`, (resp) => {
 			let data = '';
 			// A chunk of data has been received.
 			resp.on('data', (chunk) => { data += chunk; });
