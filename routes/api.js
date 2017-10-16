@@ -246,7 +246,7 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
   var token = getToken(req.headers);
   if (token) {
     query_page = req.query.page ? req.query.page : 1
-    //Get products from cache
+    // Get products from cache
     cache.get('categories:' + query_page, (err, categories) => {
       if (err) throw err;
 
@@ -257,7 +257,7 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
         // If product is not on cache, call legacy API
           next();
       }
-    })
+    });
 
 
   } else {
@@ -290,6 +290,54 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 		}).on("error", (err) => {
 			return res.status(400).send({ success: false, msg: 'Bad request.' });
 		});
+	} else {
+		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	}
+});
+
+/* ------------
+POST /transaction
+---------------
+body = {
+  product_id: 101,
+  address: "742 Evergreen Terrace",
+}
+---------------
+HEADERS:
+"Authorization" : "JWT dad7asciha7..."
+--------------- */
+router.post('/transaction', passport.authenticate('jwt', { session: false }), function (req, res) {
+	var token = getToken(req.headers);
+	if (token) {
+		// Check if transaction exists
+		cache.get(`transaction:${email}/${req.body.product_id}`, (err, transaction) => {
+			if (err) throw err;
+
+			if (transaction) {
+				// Unauthorized if already bought the product today
+				return res.status(403).send({ success: false, msg: 'Can not buy the same product twice in a day.' });
+			} else {
+				// Make transaction
+				// TODO: make request to legacy API
+				cache.setex(`transaction:${email}/${req.body.product_id}`, 86400, true);				
+			}
+		});
+
+		var newProduct = new Product({
+			id: req.body.id,
+			category: req.body.category,
+			name: req.body.name
+		});
+
+		newProduct.save(function (err) {
+			if (err) {
+				return res.json({ success: false, msg: 'Save product failed.' });
+			}
+			res.json({ success: true, msg: 'Successful created new product.' });
+		});
+
+
+
 	} else {
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 	}
@@ -350,5 +398,10 @@ getToken = function (headers) {
 		return null;
 	}
 };
+
+// Get email from JWT
+getEmail = function(token) {
+	
+}
 
 module.exports = router;
