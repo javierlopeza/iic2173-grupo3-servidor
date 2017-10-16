@@ -8,7 +8,7 @@ var jwt = require('jsonwebtoken');
 var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
-
+const cache = require('../config/cache');
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 
 /* ------------
@@ -102,48 +102,107 @@ router.post('/product', passport.authenticate('jwt', { session: false }), functi
 });
 
 /* ------------
+CACHE GET /product/:id
+---------------
+HEADERS:
+"Authorization" : "JWT dad7asciha7..."
+--------------- */
+router.get('/product/:id', passport.authenticate('jwt', { session: false }), function (req, res, next) {
+
+  if (/^\d+$/.test(req.param('id')) == false) {
+    return res.status(400).send({ success: false, msg: 'Bad request.' });
+  }
+
+  var token = getToken(req.headers);
+  if (token) {
+
+    //Get product from cache
+    cache.get("product:" + req.param('id'), (err, product) => {
+      if (err) throw err;
+
+      if (product !== null) {
+        //Return product if it is in the cache
+        return res.json(JSON.parse(product))
+      } else {
+        //If product is not on cache, call legacy API
+          next();
+      }
+    })
+
+  } else {
+    return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+  }
+})
+
+/* ------------
 GET /product/:id
 ---------------
 HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
-router.get('/product/:id', passport.authenticate('jwt', { session: false }), function (req, res) {
+router.get('/product/:id', function (req, res) {
 	// Check if 'id' is valid
-	if (/^\d+$/.test(req.param('id')) == false) {
-		return res.status(400).send({ success: false, msg: 'Bad request.' });
-	}
-	var token = getToken(req.headers);
-	if (token) {
-		// GET product from legacy api
-		http.get(`${LEGACY_API}/productos/${req.param('id')}`, (resp) => {
-			let product = '';
-			resp.on('data', (chunk) => { product += chunk; });
-			resp.on('end', () => {
-				product = JSON.parse(product);
-				if (!Object.keys(product).length) {
-					return res.status(400).send({ success: false, msg: 'Product not found.' });
-				}
-				// GET product category from legacy api
-				http.get(`${LEGACY_API}/categorias/${product.category}`, (resp) => {
-					let category = '';
-					resp.on('data', (chunk) => { category += chunk; });
-					resp.on('end', () => {
-						category = JSON.parse(category);
-						product.category = category;
-						product.success = true;
-						// Success!
-						return res.json(product);
-					});
-				}).on("error", (err) => {
-					return res.status(400).send({ success: false, msg: 'Bad request.' });
+
+	// GET product from legacy api
+	http.get(`${LEGACY_API}/productos/${req.param('id')}`, (resp) => {
+		let product = '';
+		resp.on('data', (chunk) => { product += chunk; });
+		resp.on('end', () => {
+			product = JSON.parse(product);
+			if (!Object.keys(product).length) {
+				return res.status(400).send({ success: false, msg: 'Product not found.' });
+			}
+			// GET product category from legacy api
+			http.get(`${LEGACY_API}/categorias/${product.category}`, (resp) => {
+				let category = '';
+				resp.on('data', (chunk) => { category += chunk; });
+				resp.on('end', () => {
+					category = JSON.parse(category);
+					product.category = category;
+					product.success = true;
+					// Success!
+          //Write to cache
+          cache.setex("product:" + product.id, 3600, JSON.stringify(product));
+					return res.json(product);
 				});
+			}).on("error", (err) => {
+				return res.status(400).send({ success: false, msg: 'Bad request.' });
 			});
-		}).on("error", (err) => {
-			return res.status(400).send({ success: false, msg: 'Bad request.' });
 		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+	}).on("error", (err) => {
+		return res.status(400).send({ success: false, msg: 'Bad request.' });
+	});
+});
+
+
+/* ------------
+CACHE GET /products
+---------------
+HEADERS:
+"Authorization" : "JWT dad7asciha7..."
+--------------- */
+router.get('/products', passport.authenticate('jwt', { session: false }), function (req, res, next) {
+
+  var token = getToken(req.headers);
+  if (token) {
+    query_page = req.query.page ? req.query.page : 1
+    //Get products from cache
+    cache.get('products:' + query_page, (err, products) => {
+      if (err) throw err;
+
+      if (products !== null) {
+        //Return product if it is in the cache
+        return res.json(JSON.parse(products))
+      } else {
+        //If product is not on cache, call legacy API
+          next();
+      }
+    })
+
+
+  } else {
+    return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+  }
 });
 
 /* ------------
@@ -162,6 +221,9 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
+        //Write products to cache
+        query_page = req.query.page ? req.query.page : 1
+        cache.setex("products:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
 				return res.json(JSON.parse(data));
 			});
 		}).on("error", (err) => {
@@ -171,6 +233,38 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 	}
 });
+
+
+/* ------------
+CACHE GET /categories
+---------------
+HEADERS:
+"Authorization" : "JWT dad7asciha7..."
+--------------- */
+router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res, next) {
+
+  var token = getToken(req.headers);
+  if (token) {
+    query_page = req.query.page ? req.query.page : 1
+    //Get products from cache
+    cache.get('categories:' + query_page, (err, categories) => {
+      if (err) throw err;
+
+      if (categories !== null) {
+        //Return product if it is in the cache
+        return res.json(JSON.parse(categories))
+      } else {
+        //If product is not on cache, call legacy API
+          next();
+      }
+    })
+
+
+  } else {
+    return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+  }
+});
+
 
 /* ------------
 GET /categories
@@ -188,6 +282,9 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
+        //Write to cache
+        query_page = req.query.page ? req.query.page : 1
+        cache.setex("categories:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
 				return res.json(JSON.parse(data));
 			});
 		}).on("error", (err) => {
@@ -212,7 +309,7 @@ HEADERS:
 router.post('/token', passport.authenticate('jwt', { session: false}), function(req, res){
 	var token = getToken(req.headers);
 	if (token) {
-		
+
 		User.findOne({
 			username: req.body.username
 		}, function (err, user) {
@@ -234,7 +331,7 @@ router.post('/token', passport.authenticate('jwt', { session: false}), function(
 				});
 			}
 		});
-		
+
 	} else {
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 	}
