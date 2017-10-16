@@ -116,15 +116,15 @@ router.get('/product/:id', passport.authenticate('jwt', { session: false }), fun
   var token = getToken(req.headers);
   if (token) {
 
-    //Get product from cache
+    // Get product from cache
     cache.get("product:" + req.param('id'), (err, product) => {
       if (err) throw err;
 
       if (product !== null) {
-        //Return product if it is in the cache
+        // Return product if it is in the cache
         return res.json(JSON.parse(product))
       } else {
-        //If product is not on cache, call legacy API
+        // If product is not on cache, call legacy API
           next();
       }
     })
@@ -161,7 +161,7 @@ router.get('/product/:id', function (req, res) {
 					product.category = category;
 					product.success = true;
 					// Success!
-          //Write to cache
+          // Write product to cache
           cache.setex("product:" + product.id, 3600, JSON.stringify(product));
 					return res.json(product);
 				});
@@ -186,15 +186,15 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
   var token = getToken(req.headers);
   if (token) {
     query_page = req.query.page ? req.query.page : 1
-    //Get products from cache
+    // Get products from cache
     cache.get('products:' + query_page, (err, products) => {
       if (err) throw err;
 
       if (products !== null) {
-        //Return product if it is in the cache
+        // Return product if it is in the cache
         return res.json(JSON.parse(products))
       } else {
-        //If product is not on cache, call legacy API
+        // If product is not on cache, call legacy API
           next();
       }
     })
@@ -221,7 +221,7 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
-        //Write products to cache
+        // Write products to cache
         query_page = req.query.page ? req.query.page : 1
         cache.setex("products:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
 				return res.json(JSON.parse(data));
@@ -251,10 +251,10 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
       if (err) throw err;
 
       if (categories !== null) {
-        //Return product if it is in the cache
+        // Return product if it is in the cache
         return res.json(JSON.parse(categories))
       } else {
-        //If product is not on cache, call legacy API
+        // If product is not on cache, call legacy API
           next();
       }
     })
@@ -282,7 +282,7 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
-        //Write to cache
+        // Write categories to cache
         query_page = req.query.page ? req.query.page : 1
         cache.setex("categories:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
 				return res.json(JSON.parse(data));
@@ -302,7 +302,7 @@ body = {
   username: "arquitran@uc.cl",
   password: "123123"
 }
-
+---------------
 HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------*/
