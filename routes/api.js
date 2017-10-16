@@ -11,6 +11,7 @@ var Product = require("../models/product");
 const cache = require('../config/cache');
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 
+
 /* ------------
 POST /signup
 ---------------
@@ -36,6 +37,7 @@ router.post('/signup', function (req, res) {
 		});
 	}
 });
+
 
 /* ------------
 POST /signin
@@ -69,6 +71,7 @@ router.post('/signin', function (req, res) {
 	});
 });
 
+
 /* ------------
 POST /product
 ---------------
@@ -100,6 +103,7 @@ router.post('/product', passport.authenticate('jwt', { session: false }), functi
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 	}
 });
+
 
 /* ------------
 CACHE GET /product/:id
@@ -264,7 +268,6 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
   }
 });
 
-
 /* ------------
 GET /categories
 ---------------
@@ -294,6 +297,7 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 	}
 });
 
+
 /* ------------
 POST /transaction
 ---------------
@@ -308,18 +312,20 @@ HEADERS:
 router.post('/transaction', passport.authenticate('jwt', { session: false }), function (req, res) {
 	var token = getToken(req.headers);
 	if (token) {
+		// TODO (?): check if product exists
+
 		// Check if transaction exists
-		let email = getEmail(token);
-		cache.get(`transaction:${email}/${req.body.product_id}`, (err, transaction) => {
+		let username = getUsernameFromToken(token);
+		cache.get(`transaction:${username}/${req.body.product_id}`, (err, transaction) => {
 			if (err) throw err;
 
 			if (transaction) {
-				// Unauthorized if already bought the product today
+				// Unauthorized: already bought the product today
 				return res.status(403).send({ success: false, msg: 'Can not buy the same product twice in a day.' });
 			} else {
-				// Make transaction
-				// TODO: make request to legacy API before writing transaction
-				cache.setex(`transaction:${email}/${req.body.product_id}`, 86400, true);			
+				// TODO: make request to legacy API before writing transaction into cache
+				// Write transaction into cache for 24 hours (as "transaction:<email>/<product_id>")
+				cache.setex(`transaction:${username}/${req.body.product_id}`, 86400, true);			
 				return res.send({ success: true });	
 			}
 		});
@@ -327,6 +333,7 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 	}
 });
+
 
 /* -----------
 POST /token
@@ -370,6 +377,7 @@ router.post('/token', passport.authenticate('jwt', { session: false}), function(
 	}
 });
 
+
 // Parse authorization token from request headers
 getToken = function (headers) {
 	if (headers && headers.authorization) {
@@ -384,8 +392,8 @@ getToken = function (headers) {
 	}
 };
 
-// Get email from JWT
-getEmail = function(token) {
+// Get username from JWT
+getUsernameFromToken = function(token) {
 	var decoded = jwt.verify(token, config.secret);
 	return decoded._doc.username;
 }
