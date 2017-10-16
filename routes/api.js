@@ -242,8 +242,7 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res, next) {
-
-  var token = getToken(req.headers);
+	var token = getToken(req.headers);
   if (token) {
     query_page = req.query.page ? req.query.page : 1
     // Get products from cache
@@ -310,6 +309,7 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 	var token = getToken(req.headers);
 	if (token) {
 		// Check if transaction exists
+		let email = getEmail(token);
 		cache.get(`transaction:${email}/${req.body.product_id}`, (err, transaction) => {
 			if (err) throw err;
 
@@ -318,26 +318,11 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 				return res.status(403).send({ success: false, msg: 'Can not buy the same product twice in a day.' });
 			} else {
 				// Make transaction
-				// TODO: make request to legacy API
-				cache.setex(`transaction:${email}/${req.body.product_id}`, 86400, true);				
+				// TODO: make request to legacy API before writing transaction
+				cache.setex(`transaction:${email}/${req.body.product_id}`, 86400, true);			
+				return res.send({ success: true });	
 			}
 		});
-
-		var newProduct = new Product({
-			id: req.body.id,
-			category: req.body.category,
-			name: req.body.name
-		});
-
-		newProduct.save(function (err) {
-			if (err) {
-				return res.json({ success: false, msg: 'Save product failed.' });
-			}
-			res.json({ success: true, msg: 'Successful created new product.' });
-		});
-
-
-
 	} else {
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 	}
@@ -401,7 +386,8 @@ getToken = function (headers) {
 
 // Get email from JWT
 getEmail = function(token) {
-	
+	var decoded = jwt.verify(token, config.secret);
+	return decoded._doc.username;
 }
 
 module.exports = router;
