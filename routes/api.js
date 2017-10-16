@@ -310,6 +310,15 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.post('/transaction', passport.authenticate('jwt', { session: false }), function (req, res) {
+	// Check body params
+	if (req.body.product_id == null || req.body.address == null) {
+		return res.status(400).send({ success: false, msg: 'Bad request.' });
+	}
+	// Validate product_id regex
+  if (/^\d+$/.test(req.body.product_id) == false) {
+    return res.status(400).send({ success: false, msg: 'Bad request.' });
+  }
+
 	var token = getToken(req.headers);
 	if (token) {
 		// TODO (?): check if product exists
