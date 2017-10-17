@@ -1,4 +1,5 @@
 const http = require('http');
+var request = require('request');
 var mongoose = require('mongoose');
 var passport = require('passport');
 var config = require('../config/database');
@@ -9,8 +10,9 @@ var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
 const cache = require('../config/cache');
-const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 
+const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
+const MAILER_API = 'https://arqss6.ing.puc.cl'
 
 /* ------------
 POST /signup
@@ -28,12 +30,30 @@ router.post('/signup', function (req, res) {
 			username: req.body.username,
 			password: req.body.password
 		});
-		// save the user
+		// save the user in mongoDB
 		newUser.save(function (err) {
 			if (err) {
 				return res.json({ success: false, msg: 'Username already exists.' });
 			}
-			res.json({ success: true, msg: 'Successful created new user.' });
+
+			// POST token to email-bot
+			var options = {
+				url: `${MAILER_API}/token`,
+				method: 'POST',
+				form: {
+					mail: newUser.username,
+					token: 'JWT ' + jwt.sign(newUser, config.secret, { expiresIn: '1y' })
+				}
+			};
+			request(options, function (error, response, body) {
+				if (!error && response.statusCode == 200) {
+					return res.json({ success: true, msg: 'Successful created new user.' });
+				}
+				else {
+					return res.status(500).send({ success: false, msg: 'User saved, but mailer error.' });
+				}
+			});
+
 		});
 	}
 });
@@ -60,7 +80,7 @@ router.post('/signin', function (req, res) {
 			user.comparePassword(req.body.password, function (err, isMatch) {
 				if (isMatch && !err) {
 					// if user is found and password is right create a token
-					var token = jwt.sign(user, config.secret, {expiresIn: '20m'});
+					var token = jwt.sign(user, config.secret, { expiresIn: '20m' });
 					// return the information including token as JSON
 					res.json({ success: true, token: 'JWT ' + token });
 				} else {
@@ -113,29 +133,29 @@ HEADERS:
 --------------- */
 router.get('/product/:id', passport.authenticate('jwt', { session: false }), function (req, res, next) {
 
-  if (/^\d+$/.test(req.param('id')) == false) {
-    return res.status(400).send({ success: false, msg: 'Bad request.' });
-  }
+	if (/^\d+$/.test(req.param('id')) == false) {
+		return res.status(400).send({ success: false, msg: 'Bad request.' });
+	}
 
-  var token = getToken(req.headers);
-  if (token) {
+	var token = getToken(req.headers);
+	if (token) {
 
-    // Get product from cache
-    cache.get("product:" + req.param('id'), (err, product) => {
-      if (err) throw err;
+		// Get product from cache
+		cache.get("product:" + req.param('id'), (err, product) => {
+			if (err) throw err;
 
-      if (product !== null) {
-        // Return product if it is in the cache
-        return res.json(JSON.parse(product))
-      } else {
-        // If product is not on cache, call legacy API
-          next();
-      }
-    })
+			if (product !== null) {
+				// Return product if it is in the cache
+				return res.json(JSON.parse(product))
+			} else {
+				// If product is not on cache, call legacy API
+				next();
+			}
+		})
 
-  } else {
-    return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-  }
+	} else {
+		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	}
 })
 
 /* ------------
@@ -165,8 +185,8 @@ router.get('/product/:id', function (req, res) {
 					product.category = category;
 					product.success = true;
 					// Success!
-          // Write product to cache
-          cache.setex("product:" + product.id, 3600, JSON.stringify(product));
+					// Write product to cache
+					cache.setex("product:" + product.id, 3600, JSON.stringify(product));
 					return res.json(product);
 				});
 			}).on("error", (err) => {
@@ -187,26 +207,25 @@ HEADERS:
 --------------- */
 router.get('/products', passport.authenticate('jwt', { session: false }), function (req, res, next) {
 
-  var token = getToken(req.headers);
-  if (token) {
-    query_page = req.query.page ? req.query.page : 1
-    // Get products from cache
-    cache.get('products:' + query_page, (err, products) => {
-      if (err) throw err;
+	var token = getToken(req.headers);
+	if (token) {
+		query_page = req.query.page ? req.query.page : 1
+		// Get products from cache
+		cache.get('products:' + query_page, (err, products) => {
+			if (err) throw err;
 
-      if (products !== null) {
-        // Return product if it is in the cache
-        return res.json(JSON.parse(products))
-      } else {
-        // If product is not on cache, call legacy API
-          next();
-      }
-    })
+			if (products !== null) {
+				// Return product if it is in the cache
+				return res.json(JSON.parse(products))
+			} else {
+				// If product is not on cache, call legacy API
+				next();
+			}
+		})
 
-
-  } else {
-    return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-  }
+	} else {
+		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	}
 });
 
 /* ------------
@@ -225,9 +244,9 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
-        // Write products to cache
-        query_page = req.query.page ? req.query.page : 1
-        cache.setex("products:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
+				// Write products to cache
+				query_page = req.query.page ? req.query.page : 1
+				cache.setex("products:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
 				return res.json(JSON.parse(data));
 			});
 		}).on("error", (err) => {
@@ -247,25 +266,25 @@ HEADERS:
 --------------- */
 router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res, next) {
 	var token = getToken(req.headers);
-  if (token) {
-    query_page = req.query.page ? req.query.page : 1
-    // Get products from cache
-    cache.get('categories:' + query_page, (err, categories) => {
-      if (err) throw err;
+	if (token) {
+		query_page = req.query.page ? req.query.page : 1
+		// Get products from cache
+		cache.get('categories:' + query_page, (err, categories) => {
+			if (err) throw err;
 
-      if (categories !== null) {
-        // Return product if it is in the cache
-        return res.json(JSON.parse(categories))
-      } else {
-        // If product is not on cache, call legacy API
-          next();
-      }
-    });
+			if (categories !== null) {
+				// Return product if it is in the cache
+				return res.json(JSON.parse(categories))
+			} else {
+				// If product is not on cache, call legacy API
+				next();
+			}
+		});
 
 
-  } else {
-    return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-  }
+	} else {
+		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	}
 });
 
 /* ------------
@@ -284,9 +303,9 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
-        // Write categories to cache
-        query_page = req.query.page ? req.query.page : 1
-        cache.setex("categories:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
+				// Write categories to cache
+				query_page = req.query.page ? req.query.page : 1
+				cache.setex("categories:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
 				return res.json(JSON.parse(data));
 			});
 		}).on("error", (err) => {
@@ -315,9 +334,9 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 		return res.status(400).send({ success: false, msg: 'Bad request.' });
 	}
 	// Validate product_id regex
-  if (/^\d+$/.test(req.body.product_id) == false) {
-    return res.status(400).send({ success: false, msg: 'Bad request.' });
-  }
+	if (/^\d+$/.test(req.body.product_id) == false) {
+		return res.status(400).send({ success: false, msg: 'Bad request.' });
+	}
 
 	var token = getToken(req.headers);
 	if (token) {
@@ -334,8 +353,8 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 			} else {
 				// TODO: make request to legacy API before writing transaction into cache
 				// Write transaction into cache for 24 hours (as "transaction:<email>/<product_id>")
-				cache.setex(`transaction:${username}/${req.body.product_id}`, 86400, true);			
-				return res.send({ success: true });	
+				cache.setex(`transaction:${username}/${req.body.product_id}`, 86400, true);
+				return res.send({ success: true });
 			}
 		});
 	} else {
@@ -355,7 +374,7 @@ body = {
 HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------*/
-router.post('/token', passport.authenticate('jwt', { session: false}), function(req, res){
+router.post('/token', passport.authenticate('jwt', { session: false }), function (req, res) {
 	var token = getToken(req.headers);
 	if (token) {
 
@@ -402,7 +421,7 @@ getToken = function (headers) {
 };
 
 // Get username from JWT
-getUsernameFromToken = function(token) {
+getUsernameFromToken = function (token) {
 	var decoded = jwt.verify(token, config.secret);
 	return decoded._doc.username;
 }
