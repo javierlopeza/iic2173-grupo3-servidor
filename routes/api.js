@@ -28,8 +28,7 @@ router.post('/signup', function (req, res) {
 	} else {
 		var newUser = new User({
 			username: req.body.username,
-			password: req.body.password,
-			transactions: req.body.transactions
+			password: req.body.password
 		});
 		// save the user in mongoDB
 		newUser.save(function (err) {
