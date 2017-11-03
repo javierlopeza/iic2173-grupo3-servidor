@@ -347,14 +347,25 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 		cache.get(`transaction:${username}/${req.body.product_id}`, (err, transaction) => {
 			if (err) throw err;
 
-			if (transaction) {
-				// Unauthorized: already bought the product today
-				return res.status(403).send({ success: false, msg: 'Can not buy the same product twice in a day.' });
+      if(transaction) {
+        purchase_count = parseInt(transaction)
+  			if (purchase_count < 3) {
+  				// Check how many times the product has been bought by this user
+          console.log(parseInt(transaction))
+            cache.ttl(`transaction:${username}/${req.body.product_id}`, (error, ttl) => {
+            purchase_count += 1
+            cache.setex(`transaction:${username}/${req.body.product_id}`, ttl, purchase_count);
+            return res.send({ success: true, purchase_count: purchase_count });
+          })
+        }
+        else {
+  			  return res.status(403).send({ success: false, msg: 'Can not buy the same product four times in a day.' });
+        }
 			} else {
 				// TODO: make request to legacy API before writing transaction into cache
 				// Write transaction into cache for 24 hours (as "transaction:<email>/<product_id>")
-				cache.setex(`transaction:${username}/${req.body.product_id}`, 86400, true);
-				return res.send({ success: true });
+				cache.setex(`transaction:${username}/${req.body.product_id}`, 86400, 1);
+				return res.send({ success: true, purchase_count: 1});
 			}
 		});
 	} else {
