@@ -10,6 +10,7 @@ var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
 const cache = require('../config/cache');
+const mailer = require ('../config/mailer');
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 const MAILER_API = 'https://arqss6.ing.puc.cl'
@@ -116,7 +117,7 @@ router.post('/product', passport.authenticate('jwt', { session: false }), functi
 		newProduct.save(function (err) {
 			if (err) {
 				return res.json({ success: false, msg: 'Save product failed.' });
-			}
+      }
 			res.json({ success: true, msg: 'Successful created new product.' });
 		});
 	} else {
@@ -133,7 +134,7 @@ HEADERS:
 --------------- */
 router.get('/product/:id', passport.authenticate('jwt', { session: false }), function (req, res, next) {
 
-	if (/^\d+$/.test(req.param('id')) == false) {
+	if (/^\d+$/.test(req.params.id) == false) {
 		return res.status(400).send({ success: false, msg: 'Bad request.' });
 	}
 
@@ -141,7 +142,7 @@ router.get('/product/:id', passport.authenticate('jwt', { session: false }), fun
 	if (token) {
 
 		// Get product from cache
-		cache.get("product:" + req.param('id'), (err, product) => {
+		cache.get("product:" + req.params.id, (err, product) => {
 			if (err) throw err;
 
 			if (product !== null) {
@@ -168,7 +169,7 @@ router.get('/product/:id', function (req, res) {
 	// Check if 'id' is valid
 
 	// GET product from legacy api
-	http.get(`${LEGACY_API}/productos/${req.param('id')}`, (resp) => {
+	http.get(`${LEGACY_API}/productos/${req.params.id}`, (resp) => {
 		let product = '';
 		resp.on('data', (chunk) => { product += chunk; });
 		resp.on('end', () => {
@@ -214,11 +215,11 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 		cache.get('products:' + query_page, (err, products) => {
 			if (err) throw err;
 
-			if (products !== null) {
+			if (products !== null) {        
 				// Return product if it is in the cache
 				return res.json(JSON.parse(products))
 			} else {
-				// If product is not on cache, call legacy API
+        // If product is not on cache, call legacy API      
 				next();
 			}
 		})
@@ -237,7 +238,7 @@ HEADERS:
 router.get('/products', passport.authenticate('jwt', { session: false }), function (req, res) {
 
 	var token = getToken(req.headers);
-	if (token) {
+	if (token) {    
 		http.get(`${LEGACY_API}/productos?page=${req.query.page}`, (resp) => {
 			let data = '';
 			// A chunk of data has been received.
@@ -246,7 +247,7 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 			resp.on('end', () => {
 				// Write products to cache
 				query_page = req.query.page ? req.query.page : 1
-				cache.setex("products:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
+        cache.setex("products:" + query_page, 3600, JSON.stringify(JSON.parse(data)));        
 				return res.json(JSON.parse(data));
 			});
 		}).on("error", (err) => {

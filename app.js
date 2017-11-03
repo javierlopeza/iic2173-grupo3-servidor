@@ -1,10 +1,10 @@
+require('dotenv').config()
 var express = require('express');
 var path = require('path');
 var favicon = require('serve-favicon');
 var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
-var morgan = require('morgan');
 var mongoose = require('mongoose');
 var passport = require('passport');
 var config = require('./config/database');
@@ -12,6 +12,7 @@ var config = require('./config/database');
 mongoose.connect(config.database);
 
 var api = require('./routes/api');
+var index = require('./routes/index');
 
 var app = express();
 
@@ -32,12 +33,9 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(morgan('dev'));
 app.use(passport.initialize());
 
-app.get('/', function (req, res) {
-	res.send('Arquitran API - Grupo 3 (2017-2)');
-});
+app.get('/', index);
 
 app.use('/api', api);
 
