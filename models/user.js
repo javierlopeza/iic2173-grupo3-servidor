@@ -34,22 +34,7 @@ UserSchema.pre('save', function (next) {
             });
         });
     } else {
-        if (this.isModified('transactions')) {
-          bcrypt.genSalt(10, function (err, salt) {
-              if (err) {
-                  return next(err);
-              }
-              bcrypt.hash(user.transactions, salt, null, function (err, hash) {
-                  if (err) {
-                      return next(err);
-                  }
-                  user.transactions = hash;
-                  next();
-              });
-          });
-        } else {
-          return next();
-        }
+        return next();
     }
 });
 
