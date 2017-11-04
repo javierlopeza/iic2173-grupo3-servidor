@@ -1,6 +1,7 @@
 var mongoose = require('mongoose');
 var Schema = mongoose.Schema;
 var bcrypt = require('bcrypt-nodejs');
+var encryptor = require('simple-encryptor')('temporary testing key')
 
 var UserSchema = new Schema({
     username: {
@@ -13,8 +14,9 @@ var UserSchema = new Schema({
         required: true
     },
     transactions: {
-        type: [],
-        default: []
+        type: String,
+        required: true,
+        default: encryptor.encrypt([])
     }
 });
 

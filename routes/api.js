@@ -10,6 +10,7 @@ var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
 const cache = require('../config/cache');
+var encryptor = require('simple-encryptor')('temporary testing key')
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 const MAILER_API = 'https://arqss6.ing.puc.cl'
@@ -353,6 +354,21 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 			} else {
 				// TODO: make request to legacy API before writing transaction into cache
 				// Write transaction into cache for 24 hours (as "transaction:<email>/<product_id>")
+				User.findOne({
+					username: username
+				}, function (err, user) {
+					if (err) throw err;
+					if (!user) {
+						res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+					} else {
+						var transactions = encryptor.decrypt(user.transactions);
+						transactions.push({"product_id":req.body.product_id, "date":Date.now()});
+						user.transactions = encryptor.encrypt(transactions);
+						user.save(function(err) {
+							if (err) { return next(err); }
+						});
+					}
+				});
 				cache.setex(`transaction:${username}/${req.body.product_id}`, 86400, true);
 				return res.send({ success: true });
 			}
@@ -406,36 +422,24 @@ router.post('/token', passport.authenticate('jwt', { session: false }), function
 });
 
 /* ------------
-POST /history
---------------
-body = {
-  username: "arquitran@uc.cl",
-  password: "123123"
-}
+GET /history
 ---------------
 HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
-router.post('/history', passport.authenticate('jwt', { session: false }), function (req, res) {
+router.get('/history', passport.authenticate('jwt', { session: false }), function (req, res) {
 
 	var token = getToken(req.headers);
 	if (token) {
+		let username = getUsernameFromToken(token);
 		User.findOne({
-			username: req.body.username
+			username: username
 		}, function (err, user) {
 			if (err) throw err;
 			if (!user) {
 				res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
 			} else {
-				// check if password matches
-				user.comparePassword(req.body.password, function (err, isMatch) {
-					if (isMatch && !err) {
-						// if user is found and password is right return the information including token as JSON
-						res.json(user.transactions);
-					} else {
-						res.status(401).send({ success: false, msg: 'Authentication failed. Wrong password.' });
-					}
-				});
+				res.json(encryptor.decrypt(user.transactions));
 			}
 		});
 	} else {
