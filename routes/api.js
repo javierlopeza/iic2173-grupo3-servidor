@@ -322,8 +322,22 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 POST /transaction
 ---------------
 body = {
-  product_id: 101,
-  address: "742 Evergreen Terrace",
+	"address": "742 Evergreen Terrace",
+	"total": 13000,
+	"cart": [
+		{
+			"product_id": 123,
+			"quantity": 10,
+			"price": 1000,
+			"name": "Parche"
+		},
+		{
+			"product_id": 33,
+			"quantity": 2,
+			"price": 1500,
+			"name": "Desodorante"
+		}
+	]
 }
 ---------------
 HEADERS:
@@ -331,51 +345,48 @@ HEADERS:
 --------------- */
 router.post('/transaction', passport.authenticate('jwt', { session: false }), function (req, res) {
 	// Check body params
-	if (req.body.product_id == null || req.body.address == null) {
+	if (req.body.address == null || req.body.total == null || req.body.cart == null) {
 		return res.status(400).send({ success: false, msg: 'Bad request.' });
 	}
-	// Validate product_id regex
-	if (/^\d+$/.test(req.body.product_id) == false) {
+	if (!req.body.card.length || !req.body.address.length) {
 		return res.status(400).send({ success: false, msg: 'Bad request.' });
 	}
 
+	// Get token
 	var token = getToken(req.headers);
-	if (token) {
-		// TODO (?): check if product exists
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	// Get username from token
+	let username = getUsernameFromToken(token);
 
-		// Check if transaction exists
-		let username = getUsernameFromToken(token);
-		cache.get(`transaction:${username}/${req.body.product_id}`, (err, transaction) => {
-			if (err) throw err;
+	// Check if transaction exists
+	cache.get(`transaction:${username}/${req.body.product_id}`, (err, transaction) => {
+		if (err) throw err;
 
-			if (transaction) {
-				// Unauthorized: already bought the product today
-				return res.status(403).send({ success: false, msg: 'Can not buy the same product twice in a day.' });
-			} else {
-				// TODO: make request to legacy API before writing transaction into cache
-				// Write transaction into cache for 24 hours (as "transaction:<email>/<product_id>")
-				User.findOne({
-					username: username
-				}, function (err, user) {
-					if (err) throw err;
-					if (!user) {
-						res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
-					} else {
-						var transactions = encryptor.decrypt(user.transactions);
-						transactions.push({"product_id":req.body.product_id, "date":Date.now()});
-						user.transactions = encryptor.encrypt(transactions);
-						user.save(function(err) {
-							if (err) { return next(err); }
-						});
-					}
-				});
-				cache.setex(`transaction:${username}/${req.body.product_id}`, 86400, true);
-				return res.send({ success: true });
-			}
-		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+		if (transaction) {
+			// Unauthorized: already bought the product today
+			return res.status(403).send({ success: false, msg: 'Can not buy the same product twice in a day.' });
+		} else {
+			// TODO: make request to legacy API before writing transaction into cache
+			// Write transaction into cache for 24 hours (as "transaction:<email>/<product_id>")
+			User.findOne({
+				username: username
+			}, function (err, user) {
+				if (err) throw err;
+				if (!user) {
+					res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+				} else {
+					var transactions = encryptor.decrypt(user.transactions);
+					transactions.push({"product_id":req.body.product_id, "date":Date.now()});
+					user.transactions = encryptor.encrypt(transactions);
+					user.save(function(err) {
+						if (err) { return next(err); }
+					});
+				}
+			});
+			cache.setex(`transaction:${username}/${req.body.product_id}`, 86400, true);
+			return res.send({ success: true });
+		}
+	});
 });
 
 
@@ -428,23 +439,23 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/history', passport.authenticate('jwt', { session: false }), function (req, res) {
-
+	
+	// Get token
 	var token = getToken(req.headers);
-	if (token) {
-		let username = getUsernameFromToken(token);
-		User.findOne({
-			username: username
-		}, function (err, user) {
-			if (err) throw err;
-			if (!user) {
-				res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
-			} else {
-				res.json(encryptor.decrypt(user.transactions));
-			}
-		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	// Get username from token
+	let username = getUsernameFromToken(token);
+
+	User.findOne({
+		username: username
+	}, function (err, user) {
+		if (err) throw err;
+		if (!user) {
+			res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+		} else {
+			res.json(encryptor.decrypt(user.transactions));
+		}
+	});
 });
 
 // Parse authorization token from request headers
