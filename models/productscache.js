@@ -4,7 +4,9 @@ var Product = require("../models/product");
 var distance = require("../models/worddistance");
 var mongoose = require('mongoose');
 
-var iterations = 3
+var iterations = 1
+var our_token = "6a540a40-d321-4574-a13e-498c38c44bd8"
+
 
 function sleep(ms){
     return new Promise(resolve=>{
@@ -15,31 +17,44 @@ function sleep(ms){
 function loadProducts(from, callback){
   var results = [];
   for (var counter = from; counter < from + iterations; counter++){
-    request({url: 'http://arqss17.ing.puc.cl:3000/productos?page='+ counter, json: true}, function(err, res, json) {
+
+    request({
+        url: 'http://arqss16.ing.puc.cl/products/?application_token=6a540a40-d321-4574-a13e-498c38c44bd8&page=1', 
+        //'http://arqss16.ing.puc.cl:3000/products?application_token=' + our_token + '&page='+ counter, 
+        json: true
+      }
+      , function(err, res, json) {
       if (err) {
         console.log(err);
       }
-      for (var i = json.length - 1; i >= 0; i--) {
-        json[i]["length"] = json[i].name.length;
-        console.log(json[i]);
-        var newProduct = new Product({
-          id: json[i].id,
-          category: json[i].category,
-          name: json[i].name,
-          length: json[i].name.length,
-          pridce: json[i].price
-        });
-        newProduct.save();
+      products = JSON.parse(json.products);
+      console.log(products);
+      if (json){
+        for (var i = products.length - 1; i >= 0; i--) {
+          product = products[i]
 
-      }
-      results.push(json.length);
-      if (results.length == iterations){
+          var newProduct = new Product({
+            id: product.pk,
+            category: product.fields.category,
+            name: product.fields.name,
+            length: product.fields.name.length,
+            price: product.fields.price,
+          });
+          newProduct.save();
+          
 
-        if (results.includes(0)){
-          callback(false);
-        } else {
-          callback(true);
         }
+        results.push(json.length);
+        if (results.length == iterations){
+
+          if (results.includes(0)){
+            callback(false);
+          } else {
+            callback(false);
+          }
+        }
+      } else {
+        callback(false);
       }
     });
   }
@@ -47,14 +62,11 @@ function loadProducts(from, callback){
 
 async function load(){
   loadMore = true;
-  Product.remove({}, function(err) { 
-   console.log('collection removed') 
-});
   for (var counter = 1; loadMore == true; counter += iterations){
     loadProducts(counter, function(result){
       loadMore = result;
     });
-    await sleep(20);
+    await sleep(100);
   }
 };
 
@@ -89,7 +101,7 @@ module.exports.find = function(producto, callback){
   });
 }
 
-
+load();
 var minutes = 10, the_interval = minutes * 60 * 1000;
 setInterval(function() {
   load();
