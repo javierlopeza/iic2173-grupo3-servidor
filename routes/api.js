@@ -10,7 +10,8 @@ var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
 const cache = require('../config/cache');
-var encryptor = require('simple-encryptor')('temporary testing key')
+require('dotenv').config();
+var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 const NEW_LEGACY_API = 'http://arqss16.ing.puc.cl';
@@ -461,7 +462,6 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 			console.log(err);
 		});
 	});
-
 });
 
 // Register order with Orders API

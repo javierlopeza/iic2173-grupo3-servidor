@@ -1,7 +1,8 @@
 var mongoose = require('mongoose');
 var Schema = mongoose.Schema;
 var bcrypt = require('bcrypt-nodejs');
-var encryptor = require('simple-encryptor')('temporary testing key')
+require('dotenv').config();
+var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
 
 var UserSchema = new Schema({
     username: {
