@@ -14,6 +14,10 @@ var ProductSchema = new Schema({
   name: {
     type: String,
     required: true
+  },
+  length: {
+    type: Number,
+    required: false
   }
 });
 

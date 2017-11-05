@@ -110,7 +110,8 @@ router.post('/product', passport.authenticate('jwt', { session: false }), functi
 		var newProduct = new Product({
 			id: req.body.id,
 			category: req.body.category,
-			name: req.body.name
+			name: req.body.name,
+			length: req.body.name.length
 		});
 
 		newProduct.save(function (err) {
