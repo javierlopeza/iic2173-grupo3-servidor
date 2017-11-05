@@ -184,6 +184,7 @@ router.get('/product/:id', function (req, res) {
 				resp.on('end', () => {
 					category = JSON.parse(category);
 					product.category = category;
+					product.length = product.name.length;
 					product.success = true;
 					// Success!
 					// Write product to cache
