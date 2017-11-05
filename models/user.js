@@ -1,6 +1,8 @@
 var mongoose = require('mongoose');
 var Schema = mongoose.Schema;
 var bcrypt = require('bcrypt-nodejs');
+require('dotenv').config();
+var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
 
 var UserSchema = new Schema({
     username: {
@@ -11,6 +13,11 @@ var UserSchema = new Schema({
     password: {
         type: String,
         required: true
+    },
+    transactions: {
+        type: String,
+        required: true,
+        default: encryptor.encrypt([])
     }
 });
 

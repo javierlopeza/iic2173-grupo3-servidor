@@ -10,9 +10,11 @@ var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
 const cache = require('../config/cache');
+require('dotenv').config();
+var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
-const MAILER_API = 'https://arqss6.ing.puc.cl'
+const MAILER_API = 'https://arqss6.ing.puc.cl';
 
 /* ------------
 POST /signup
@@ -321,8 +323,21 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 POST /transaction
 ---------------
 body = {
-  product_id: 101,
-  address: "742 Evergreen Terrace",
+	"address": "742 Evergreen Terrace",
+	"cart": [
+		{
+			"product_id": 123,
+			"quantity": 10,
+			"price": 1000,
+			"name": "Parche"
+		},
+		{
+			"product_id": 33,
+			"quantity": 2,
+			"price": 1500,
+			"name": "Desodorante"
+		}
+	]
 }
 ---------------
 HEADERS:
@@ -330,47 +345,77 @@ HEADERS:
 --------------- */
 router.post('/transaction', passport.authenticate('jwt', { session: false }), function (req, res) {
 	// Check body params
-	if (req.body.product_id == null || req.body.address == null) {
+	if (!req.body.address || !req.body.cart) {
 		return res.status(400).send({ success: false, msg: 'Bad request.' });
 	}
-	// Validate product_id regex
-	if (/^\d+$/.test(req.body.product_id) == false) {
+	if (!req.body.cart.length || !req.body.address.length) {
 		return res.status(400).send({ success: false, msg: 'Bad request.' });
 	}
 
+	// Get token
 	var token = getToken(req.headers);
-	if (token) {
-		// TODO (?): check if product exists
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	// Get username from token
+	let username = getUsernameFromToken(token);
 
-		// Check if transaction exists
-		let username = getUsernameFromToken(token);
-		cache.get(`transaction:${username}/${req.body.product_id}`, (err, transaction) => {
+	// Check the number of times the user bought each product today
+	const products_ids = req.body.cart.map(product => product.product_id);
+	const txs_keys = req.body.cart.map(product => `transaction:${username}/${product.product_id}`);
+	const accepted_cart = [];
+	const rejected_cart = [];
+	cache.mget(txs_keys, (err, reply) => {
+		if (err) throw err;
+		// Iterate over products
+		for (let i = 0; i < reply.length; i++) {
+			let count = parseInt(reply[i]);
+			let product = req.body.cart[i];
+			let product_id = products_ids[i];
+			let tx_key = txs_keys[i];
+			// Check if product hasn't been purchased today
+			if (isNaN(count)) {
+				// Write transaction into cache for 24 hours (86400 seconds)
+				cache.setex(`transaction:${username}/${product_id}`, 10, 1);
+				accepted_cart.push(product);
+				continue;
+			}
+			// Product has been purchased today
+			if (count < 2) {
+				// Re-write transaction into cache for TTL seconds, with count + 1
+				cache.ttl(tx_key, (err, ttl) => {
+					cache.setex(tx_key, ttl, count + 1);
+				});
+				accepted_cart.push(product);
+				continue;
+			}
+			else {
+				// Reject purchase
+				product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";
+				rejected_cart.push(product);
+				continue;
+			}
+		}
+
+		// Write transaction to user history
+		User.findOne({ username: username }, (err, user) => {
 			if (err) throw err;
-
-      if(transaction) {
-        purchase_count = parseInt(transaction)
-  			if (purchase_count < 3) {
-  				// Check how many times the product has been bought by this user
-          console.log(parseInt(transaction))
-            cache.ttl(`transaction:${username}/${req.body.product_id}`, (error, ttl) => {
-            purchase_count += 1
-            cache.setex(`transaction:${username}/${req.body.product_id}`, ttl, purchase_count);
-            return res.send({ success: true, purchase_count: purchase_count });
-          })
-        }
-        else {
-  			  return res.status(403).send({ success: false, msg: 'Can not buy the same product four times in a day.' });
-        }
+			if (!user) {
+				res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
 			} else {
-				// TODO: make request to legacy API before writing transaction into cache
-				// Write transaction into cache for 24 hours (as "transaction:<email>/<product_id>")
-				cache.setex(`transaction:${username}/${req.body.product_id}`, 86400, 1);
-				return res.send({ success: true, purchase_count: 1});
+				// Calculate total price from accepted products
+				let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
+				// Get current user history and push new cart into it
+				let transactions = encryptor.decrypt(user.transactions);
+				transactions.push({"accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
+				// Encrypt transactions array and save it again
+				user.transactions = encryptor.encrypt(transactions);
+				user.save((err) => {
+					if (err) throw err;
+				});
 			}
 		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+
+		return res.send({ success: true, rejected: rejected_cart, accepted: accepted_cart });
+	});
 });
 
 
@@ -416,6 +461,29 @@ router.post('/token', passport.authenticate('jwt', { session: false }), function
 	}
 });
 
+/* ------------
+GET /history
+---------------
+HEADERS:
+"Authorization" : "JWT dad7asciha7..."
+--------------- */
+router.get('/history', passport.authenticate('jwt', { session: false }), function (req, res) {
+
+	// Get token
+	var token = getToken(req.headers);
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	// Get username from token
+	let username = getUsernameFromToken(token);
+
+	User.findOne({ username: username }, (err, user) => {
+		if (err) throw err;
+		if (!user) {
+			res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+		} else {
+			res.json(encryptor.decrypt(user.transactions));
+		}
+	});
+});
 
 // Parse authorization token from request headers
 getToken = function (headers) {
