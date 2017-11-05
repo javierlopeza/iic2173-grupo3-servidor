@@ -448,7 +448,7 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 					let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
 					// Get current user history and push new cart into it
 					let transactions = encryptor.decrypt(user.transactions);
-					transactions.push({"accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
+					transactions.push({"address": req.body.address, "accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
 					// Encrypt transactions array and save it again
 					user.transactions = encryptor.encrypt(transactions);
 					user.save((err) => {
