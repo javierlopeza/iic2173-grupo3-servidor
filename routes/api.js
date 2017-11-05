@@ -548,7 +548,7 @@ router.get('/history', passport.authenticate('jwt', { session: false }), functio
 		if (!user) {
 			res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
 		} else {
-			let transactions = encryptor.decrypt(user.transactions);
+			let transactions = encryptor.decrypt(user.transactions).reverse();
 			transactions = paginate(transactions, 10, req.query.page);
 			res.json(transactions);
 		}
