@@ -56,6 +56,8 @@ function editDistance(word1, word2){
  */
 function simpleDistance(word1, word2){
 	dist = 0;
+	word1 = word1.toLowerCase();
+	word2 = word2.toLowerCase();
 	if (word1.length > word2.length){
 		temp = word1
 		word1 = word2
@@ -70,6 +72,5 @@ function simpleDistance(word1, word2){
 	return dist;
 }
 
-
-console.log(editDistance("casas","cass"));
-console.log(simpleDistance("casas","cass"));
+module.exports.simpleDistance = simpleDistance;
+module.exports.editDistance = editDistance;

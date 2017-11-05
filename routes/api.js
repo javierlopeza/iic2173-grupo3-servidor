@@ -10,6 +10,7 @@ var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
 const cache = require('../config/cache');
+var productsCache = require('../models/productscache');
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 const MAILER_API = 'https://arqss6.ing.puc.cl'
@@ -157,6 +158,31 @@ router.get('/product/:id', passport.authenticate('jwt', { session: false }), fun
 	} else {
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 	}
+})
+
+
+/* ------------
+CACHE GET /product?name="parche"
+---------------
+HEADERS:
+"Authorization" : "JWT dad7asciha7..."
+--------------- */
+router.get('/product/', passport.authenticate('jwt', { session: false }), function (req, res, next) {
+	if (!req.query.name){
+		return res.status(400).send({ success: false, msg: 'Bad request.' });
+	}
+
+	var token = getToken(req.headers);
+	if (token){
+		productsCache.find(req.query.name,function(products){
+			console.log(products);
+			return res.json({result: products});
+		});
+	} else {
+		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	}
+
+
 })
 
 /* ------------
