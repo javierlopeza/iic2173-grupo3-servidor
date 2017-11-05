@@ -14,7 +14,13 @@ require('dotenv').config();
 var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
+const NEW_LEGACY_API = 'http://arqss16.ing.puc.cl';
 const MAILER_API = 'https://arqss6.ing.puc.cl';
+
+const APPLICATION_TOKEN = '6a540a40-d321-4574-a13e-498c38c44bd8';
+const GROUP_ID = 'G3';
+
+const MAX_PER_DAY = 2;
 
 /* ------------
 POST /signup
@@ -237,19 +243,29 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/products', passport.authenticate('jwt', { session: false }), function (req, res) {
+	let fixed_page = req.query.page ? req.query.page - 1 : 0;
 
 	var token = getToken(req.headers);
 	if (token) {
-		http.get(`${LEGACY_API}/productos?page=${req.query.page}`, (resp) => {
+		http.get(`${NEW_LEGACY_API}/products/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
 			let data = '';
 			// A chunk of data has been received.
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
+				let products = JSON.parse(JSON.parse(data).products);
+				products = products.map((product) => { 
+					return {
+						id: product.pk,
+						category: product.fields.category,
+						name: product.fields.name, 
+						price: parseInt(product.fields.price)
+					};
+				})
 				// Write products to cache
 				query_page = req.query.page ? req.query.page : 1
-				cache.setex("products:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
-				return res.json(JSON.parse(data));
+				cache.setex("products:" + query_page, 3600, JSON.stringify(products));
+				return res.json(products);
 			});
 		}).on("error", (err) => {
 			return res.status(400).send({ success: false, msg: 'Bad request.' });
@@ -296,19 +312,29 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res) {
+	let fixed_page = req.query.page ? req.query.page - 1 : 0;
 
 	var token = getToken(req.headers);
 	if (token) {
-		http.get(`${LEGACY_API}/categorias?page=${req.query.page}`, (resp) => {
+		http.get(`${NEW_LEGACY_API}/categories/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
 			let data = '';
 			// A chunk of data has been received.
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
+				let categories = JSON.parse(JSON.parse(data).categories);
+				categories = categories.map((category) => { 
+					return {
+						id: category.pk,
+						context: category.fields.context,
+						area: category.fields.area,
+						group: category.fields.group
+					};
+				})
 				// Write categories to cache
 				query_page = req.query.page ? req.query.page : 1
-				cache.setex("categories:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
-				return res.json(JSON.parse(data));
+				cache.setex("categories:" + query_page, 3600, JSON.stringify(categories));
+				return res.json(categories);
 			});
 		}).on("error", (err) => {
 			return res.status(400).send({ success: false, msg: 'Bad request.' });
@@ -359,8 +385,8 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 	let username = getUsernameFromToken(token);
 
 	// Check the number of times the user bought each product today
-	const products_ids = req.body.cart.map(product => product.product_id);
 	const txs_keys = req.body.cart.map(product => `transaction:${username}/${product.product_id}`);
+	const registerPromises = [];
 	const accepted_cart = [];
 	const rejected_cart = [];
 	cache.mget(txs_keys, (err, reply) => {
@@ -369,54 +395,94 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 		for (let i = 0; i < reply.length; i++) {
 			let count = parseInt(reply[i]);
 			let product = req.body.cart[i];
-			let product_id = products_ids[i];
-			let tx_key = txs_keys[i];
+
 			// Check if product hasn't been purchased today
 			if (isNaN(count)) {
-				// Write transaction into cache for 24 hours (86400 seconds)
-				cache.setex(`transaction:${username}/${product_id}`, 10, 1);
-				accepted_cart.push(product);
+				product.count = 1;
+				registerPromises.push(registerOrder(product, username));
 				continue;
 			}
 			// Product has been purchased today
-			if (count < 2) {
-				// Re-write transaction into cache for TTL seconds, with count + 1
-				cache.ttl(tx_key, (err, ttl) => {
-					cache.setex(tx_key, ttl, count + 1);
-				});
-				accepted_cart.push(product);
+			if (count < MAX_PER_DAY) {
+				product.count = count + 1;
+				registerPromises.push(registerOrder(product, username));
 				continue;
 			}
 			else {
 				// Reject purchase
-				product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";
+				product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";	
 				rejected_cart.push(product);
-				continue;
+				continue;			
 			}
 		}
-
-		// Write transaction to user history
-		User.findOne({ username: username }, (err, user) => {
-			if (err) throw err;
-			if (!user) {
-				res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
-			} else {
-				// Calculate total price from accepted products
-				let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
-				// Get current user history and push new cart into it
-				let transactions = encryptor.decrypt(user.transactions);
-				transactions.push({"accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
-				// Encrypt transactions array and save it again
-				user.transactions = encryptor.encrypt(transactions);
-				user.save((err) => {
-					if (err) throw err;
-				});
-			}
+	
+		Promise.all(registerPromises).then((values) => {
+			values.forEach((value) => {
+				let product = value.product;		
+				if (value.status.transaction_status_code === 'EXEC') {
+					let tx_key = `transaction:${username}/${product.product_id}`;
+					if (product.count == 1) {
+						// Write transaction into cache for 24 hours (86400 seconds)
+						cache.setex(tx_key, 86400, 1);
+					}
+					else if (product.count <= MAX_PER_DAY) {
+						// Re-write transaction into cache for TTL seconds, with count + 1						
+						cache.ttl(tx_key, (err, ttl) => {
+							cache.setex(tx_key, ttl, product.count);
+						});
+					}
+					accepted_cart.push(product);
+				}
+				else {
+					product.rejected_reason = "Información del producto es inválida.";	
+					rejected_cart.push(product)
+				}
+			});
+			// Write transaction to user history
+			User.findOne({ username: username }, (err, user) => {
+				if (err) throw err;
+				if (!user) {
+					res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+				} else {
+					// Calculate total price from accepted products
+					let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
+					// Get current user history and push new cart into it
+					let transactions = encryptor.decrypt(user.transactions);
+					transactions.push({"accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
+					// Encrypt transactions array and save it again
+					user.transactions = encryptor.encrypt(transactions);
+					user.save((err) => {
+						if (err) throw err;
+					});
+				}
+			}).then(() => {
+				return res.send({ success: true, rejected: rejected_cart, accepted: accepted_cart });
+			});
+		}, (err) => {
+			console.log(err);
 		});
-
-		return res.send({ success: true, rejected: rejected_cart, accepted: accepted_cart });
 	});
 });
+
+// Register order with Orders API
+registerOrder = function (product, username) {
+	return new Promise((resolve, reject) => {
+		let body = {
+			json: {
+				application_token: APPLICATION_TOKEN,
+				product: `${product.product_id}`,
+				id: GROUP_ID,
+				amount: `${product.quantity}`,
+				user_id: `${username}`
+			}
+		};
+		request.post(`${NEW_LEGACY_API}/transactions/`, body, (error, response, body) => {
+			if (error) reject(response);
+			body.product = product;
+			resolve(body);
+		});
+	});
+}
 
 
 /* -----------
@@ -468,6 +534,8 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/history', passport.authenticate('jwt', { session: false }), function (req, res) {
+	// Pagination (default 1)
+	if (!req.query.page) req.query.page = 1;
 
 	// Get token
 	var token = getToken(req.headers);
@@ -480,7 +548,9 @@ router.get('/history', passport.authenticate('jwt', { session: false }), functio
 		if (!user) {
 			res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
 		} else {
-			res.json(encryptor.decrypt(user.transactions));
+			let transactions = encryptor.decrypt(user.transactions);
+			transactions = paginate(transactions, 10, req.query.page);
+			res.json(transactions);
 		}
 	});
 });
@@ -504,5 +574,11 @@ getUsernameFromToken = function (token) {
 	var decoded = jwt.verify(token, config.secret);
 	return decoded._doc.username;
 }
+
+// Paginate array
+paginate = function (array, page_size, page_number) {
+	--page_number;
+	return array.slice(page_number * page_size, (page_number + 1) * page_size);
+  }
 
 module.exports = router;
