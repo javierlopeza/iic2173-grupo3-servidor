@@ -14,7 +14,6 @@ function sleep(ms){
 
 function loadProducts(from, callback){
   var results = [];
-
   for (var counter = from; counter < from + iterations; counter++){
     request({url: 'http://arqss17.ing.puc.cl:3000/productos?page='+ counter, json: true}, function(err, res, json) {
       if (err) {
@@ -27,9 +26,11 @@ function loadProducts(from, callback){
           id: json[i].id,
           category: json[i].category,
           name: json[i].name,
-          length: json[i].name.length
+          length: json[i].name.length,
+          pridce: json[i].price
         });
         newProduct.save();
+
       }
       results.push(json.length);
       if (results.length == iterations){
@@ -44,8 +45,11 @@ function loadProducts(from, callback){
   }
 }
 
-module.exports.load = async function(){
+async function load(){
   loadMore = true;
+  Product.remove({}, function(err) { 
+   console.log('collection removed') 
+});
   for (var counter = 1; loadMore == true; counter += iterations){
     loadProducts(counter, function(result){
       loadMore = result;
@@ -53,6 +57,8 @@ module.exports.load = async function(){
     await sleep(20);
   }
 };
+
+module.exports.load = load;
 
 module.exports.find = function(producto, callback){
   var result = [];
@@ -69,6 +75,7 @@ module.exports.find = function(producto, callback){
       length: producto.length
     })
     .exec(function (err, products) {
+
       for (var i = 0; i < products.length; i++){
         product = products[i];
         if (distance.simpleDistance(product.name, producto) == 1){
@@ -80,7 +87,12 @@ module.exports.find = function(producto, callback){
       callback(result);
     });
   });
-
 }
+
+
+var minutes = 10, the_interval = minutes * 60 * 1000;
+setInterval(function() {
+  load();
+}, the_interval);
 
 
