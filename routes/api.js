@@ -10,10 +10,11 @@ var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
 const cache = require('../config/cache');
-var encryptor = require('simple-encryptor')('temporary testing key')
+require('dotenv').config();
+var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
-const MAILER_API = 'https://arqss6.ing.puc.cl'
+const MAILER_API = 'https://arqss6.ing.puc.cl';
 
 /* ------------
 POST /signup
@@ -377,20 +378,20 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 				accepted_cart.push(product);
 				continue;
 			}
-			// Product has been purchased today			
+			// Product has been purchased today
 			if (count < 2) {
 				// Re-write transaction into cache for TTL seconds, with count + 1
 				cache.ttl(tx_key, (err, ttl) => {
 					cache.setex(tx_key, ttl, count + 1);
 				});
-				accepted_cart.push(product);				
+				accepted_cart.push(product);
 				continue;
 			}
 			else {
 				// Reject purchase
-				product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";	
-				rejected_cart.push(product);	
-				continue;			
+				product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";
+				rejected_cart.push(product);
+				continue;
 			}
 		}
 
@@ -406,7 +407,6 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 				let transactions = encryptor.decrypt(user.transactions);
 				transactions.push({"accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
 				// Encrypt transactions array and save it again
-				console.log(transactions);
 				user.transactions = encryptor.encrypt(transactions);
 				user.save((err) => {
 					if (err) throw err;
