@@ -13,7 +13,7 @@ const cache = require('../config/cache');
 var encryptor = require('simple-encryptor')('temporary testing key')
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
-const ORDERS_API = 'http://arqss16.ing.puc.cl';
+const NEW_LEGACY_API = 'http://arqss16.ing.puc.cl';
 const MAILER_API = 'https://arqss6.ing.puc.cl';
 
 const APPLICATION_TOKEN = '6a540a40-d321-4574-a13e-498c38c44bd8';
@@ -242,19 +242,29 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/products', passport.authenticate('jwt', { session: false }), function (req, res) {
+	let fixed_page = req.query.page ? req.query.page - 1 : 0;
 
 	var token = getToken(req.headers);
 	if (token) {
-		http.get(`${LEGACY_API}/productos?page=${req.query.page}`, (resp) => {
+		http.get(`${NEW_LEGACY_API}/products/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
 			let data = '';
 			// A chunk of data has been received.
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
+				let products = JSON.parse(JSON.parse(data).products);
+				products = products.map((product) => { 
+					return {
+						id: product.pk,
+						category: product.fields.category,
+						name: product.fields.name, 
+						price: parseInt(product.fields.price)
+					};
+				})
 				// Write products to cache
 				query_page = req.query.page ? req.query.page : 1
-				cache.setex("products:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
-				return res.json(JSON.parse(data));
+				cache.setex("products:" + query_page, 10, JSON.stringify(products));
+				return res.json(products);
 			});
 		}).on("error", (err) => {
 			return res.status(400).send({ success: false, msg: 'Bad request.' });
@@ -456,7 +466,7 @@ registerOrder = function (product, username) {
 				user_id: `${username}`
 			}
 		};
-		request.post(`${ORDERS_API}/transactions/`, body, (error, response, body) => {
+		request.post(`${NEW_LEGACY_API}/transactions/`, body, (error, response, body) => {
 			if (error) reject(response);
 			body.product = product;
 			resolve(body);
