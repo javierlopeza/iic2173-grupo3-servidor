@@ -263,7 +263,7 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 				})
 				// Write products to cache
 				query_page = req.query.page ? req.query.page : 1
-				cache.setex("products:" + query_page, 10, JSON.stringify(products));
+				cache.setex("products:" + query_page, 3600, JSON.stringify(products));
 				return res.json(products);
 			});
 		}).on("error", (err) => {
@@ -311,19 +311,29 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res) {
+	let fixed_page = req.query.page ? req.query.page - 1 : 0;
 
 	var token = getToken(req.headers);
 	if (token) {
-		http.get(`${LEGACY_API}/categorias?page=${req.query.page}`, (resp) => {
+		http.get(`${NEW_LEGACY_API}/categories/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
 			let data = '';
 			// A chunk of data has been received.
 			resp.on('data', (chunk) => { data += chunk; });
 			// The whole response has been received. Print out the result.
 			resp.on('end', () => {
+				let categories = JSON.parse(JSON.parse(data).categories);
+				categories = categories.map((category) => { 
+					return {
+						id: category.pk,
+						context: category.fields.context,
+						area: category.fields.area,
+						group: category.fields.group
+					};
+				})
 				// Write categories to cache
 				query_page = req.query.page ? req.query.page : 1
-				cache.setex("categories:" + query_page, 3600, JSON.stringify(JSON.parse(data)));
-				return res.json(JSON.parse(data));
+				cache.setex("categories:" + query_page, 3600, JSON.stringify(categories));
+				return res.json(categories);
 			});
 		}).on("error", (err) => {
 			return res.status(400).send({ success: false, msg: 'Bad request.' });
