@@ -161,7 +161,7 @@ GET /product/:id
 HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
-router.get('/product/:id', function (req, res) {
+router.get('/product/:id', passport.authenticate('jwt', { session: false }), function (req, res) {
 	// Check if 'id' is valid
 	if (!/^[0-9]+$/.test(req.param('id'))) return res.status(400).send({ success: false, msg: 'Bad request.' });
 	const product_id = req.param('id');
