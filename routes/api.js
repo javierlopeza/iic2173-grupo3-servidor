@@ -147,23 +147,21 @@ router.get('/product/', passport.authenticate('jwt', { session: false }), functi
 
 	// Authenticate
 	var token = getToken(req.headers);
-	if (token){
-		// Find products by name
-		productsCache.find(req.query.name, function(products) {
-			let promises = [];
-			products.forEach(product => {
-				promises.push(Category.findOne({'id':product.category}, {'_id':0, '__v':0}));
-			})
-			Promise.all(promises).then((categories) => {
-				for (var i = 0; i < products.length; i++) {
-					products[i].category = categories[i];
-				}
-				return res.json(products);
-			});
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+
+	// Find products by name
+	productsCache.find(req.query.name, function(products) {
+		let promises = [];
+		products.forEach(product => {
+			promises.push(Category.findOne({'id':product.category}, {'_id':0, '__v':0}));
+		})
+		Promise.all(promises).then((categories) => {
+			for (var i = 0; i < products.length; i++) {
+				products[i].category = categories[i];
+			}
+			return res.json(products);
 		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+	});
 });
 
 /* ------------
@@ -234,31 +232,6 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 });
 
 /* ------------
-CACHE GET /categories
----------------
-HEADERS:
-"Authorization" : "JWT dad7asciha7..."
---------------- */
-router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res, next) {
-	// Authenticate
-	var token = getToken(req.headers);
-	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-
-	// Get categories from cache
-	query_page = req.query.page ? req.query.page : 1;
-	cache.get('categories:' + query_page, (err, categories) => {
-		if (err) throw err;
-		if (categories !== null) {
-			// Return categories page if it is in the cache
-			return res.json(JSON.parse(categories));
-		} else {
-			// If categories page is not in the cache, call legacy API
-			next();
-		}
-	});
-});
-
-/* ------------
 GET /categories
 ---------------
 HEADERS:
@@ -268,36 +241,21 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 	// Validate page param
 	if (!req.query.page) req.query.page = 1;
 	if (!/^[0-9]+$/.test(req.query.page)) return res.status(400).send({ success: false, msg: 'Bad request.' });
-	let fixed_page = req.query.page ? req.query.page - 1 : 0;
-	if (fixed_page < 0) return res.status(400).send({ success: false, msg: 'Bad request.' });
+	if (req.query.page == 0) req.query.page = 1;
+	let page_num = req.query.page ? req.query.page : 1;
 
 	// Authenticate
 	var token = getToken(req.headers);
 	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 
-	// Get categories from legacy API
-	http.get(`${NEW_LEGACY_API}/categories/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
-		let data = '';
-		// A chunk of data has been received.
-		resp.on('data', (chunk) => { data += chunk; });
-		// The whole response has been received. Print out the result.
-		resp.on('end', () => {
-			let categories = JSON.parse(data).categories;
-			categories = categories.map((category) => { 
-				return {
-					id: category.pk,
-					context: category.fields.context,
-					area: category.fields.area,
-					group: category.fields.group
-				};
-			})
-			// Write categories to cache
-			query_page = req.query.page ? req.query.page : 1
-			cache.setex("categories:" + query_page, 3600, JSON.stringify(categories));
-			return res.json(categories);
-		});
-	}).on("error", (err) => {
-		return res.status(400).send({ success: false, msg: 'Bad request.' });
+	// Get categories paginated
+	const page_size = 10;
+	const skips = page_size * (page_num - 1);
+	Category.find({}, {'_id':0, '__v':0})
+	.skip(skips)
+	.limit(page_size)
+	.exec((err, categories) => {
+		return res.json(categories);				
 	});
 });
 
