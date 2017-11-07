@@ -19,11 +19,9 @@ function loadProducts(from, callback){
   for (var counter = from; counter < from + iterations; counter++){
 
     request({
-        url: 'http://arqss16.ing.puc.cl/products/?application_token='+token+'&page='+ counter, 
-        //'http://arqss16.ing.puc.cl:3000/products?application_token=' + our_token + '&page='+ counter, 
+        url: `http://arqss16.ing.puc.cl/products/?application_token=${token}&page=${counter}`,
         json: true
-      }
-      , function(err, res, json) {
+      }, function(err, res, json) {
       if (err) {
         console.log(err);
       }
@@ -39,8 +37,6 @@ function loadProducts(from, callback){
             price: product.fields.price,
           });
           newProduct.save();
-          
-
         }
         results.push(products.length);
         if (results.length == iterations){

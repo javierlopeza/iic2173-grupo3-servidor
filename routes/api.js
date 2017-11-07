@@ -234,36 +234,6 @@ router.get('/product/:id', function (req, res) {
 	});
 });
 
-
-/* ------------
-CACHE GET /products
----------------
-HEADERS:
-"Authorization" : "JWT dad7asciha7..."
---------------- */
-router.get('/products', passport.authenticate('jwt', { session: false }), function (req, res, next) {
-
-	var token = getToken(req.headers);
-	if (token) {
-		query_page = req.query.page ? req.query.page : 1
-		// Get products from cache
-		cache.get('products:' + query_page, (err, products) => {
-			if (err) throw err;
-
-			if (products !== null) {
-				// Return product if it is in the cache
-				return res.json(JSON.parse(products))
-			} else {
-				// If product is not on cache, call legacy API
-				next();
-			}
-		})
-
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
-});
-
 /* ------------
 GET /products
 ---------------
@@ -271,38 +241,24 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/products', passport.authenticate('jwt', { session: false }), function (req, res) {
-	let fixed_page = req.query.page ? req.query.page - 1 : 0;
+	if (!/^[0-9]+$/.test(req.query.page)) return res.status(400).send({ success: false, msg: 'Bad request.' });
+	if (req.query.page == 0) req.query.page = 1;
+	let page_num = req.query.page ? req.query.page : 1;
 
 	var token = getToken(req.headers);
 	if (token) {
-		http.get(`${NEW_LEGACY_API}/products/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
-			let data = '';
-			// A chunk of data has been received.
-			resp.on('data', (chunk) => { data += chunk; });
-			// The whole response has been received. Print out the result.
-			resp.on('end', () => {
-				let products = JSON.parse(JSON.parse(data).products);
-				products = products.map((product) => { 
-					return {
-						id: product.pk,
-						category: product.fields.category,
-						name: product.fields.name, 
-						price: parseInt(product.fields.price)
-					};
-				})
-				// Write products to cache
-				query_page = req.query.page ? req.query.page : 1
-				cache.setex("products:" + query_page, 3600, JSON.stringify(products));
-				return res.json(products);
-			});
-		}).on("error", (err) => {
-			return res.status(400).send({ success: false, msg: 'Bad request.' });
+		const page_size = 10;
+		const skips = page_size * (page_num - 1);
+		Product.find({}, {"_id":0, "__v":0})
+		.skip(skips)
+		.limit(page_size)
+		.exec(function (err, products) {
+			res.json(products);
 		});
 	} else {
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 	}
 });
-
 
 /* ------------
 CACHE GET /categories
