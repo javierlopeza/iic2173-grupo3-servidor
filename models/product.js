@@ -1,4 +1,6 @@
 var mongoose = require('mongoose');
+var request = require('request');
+
 var Schema = mongoose.Schema;
 
 var ProductSchema = new Schema({
@@ -13,6 +15,14 @@ var ProductSchema = new Schema({
   },
   name: {
     type: String,
+    required: true
+  },
+  length: {
+    type: Number,
+    required: false
+  },
+  price: {
+    type: Number,
     required: true
   }
 });

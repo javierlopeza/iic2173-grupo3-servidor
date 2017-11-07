@@ -12,6 +12,7 @@ var Product = require("../models/product");
 const cache = require('../config/cache');
 require('dotenv').config();
 var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
+var productsCache = require('../models/productscache');
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 const NEW_LEGACY_API = 'http://arqss16.ing.puc.cl';
@@ -118,7 +119,8 @@ router.post('/product', passport.authenticate('jwt', { session: false }), functi
 		var newProduct = new Product({
 			id: req.body.id,
 			category: req.body.category,
-			name: req.body.name
+			name: req.body.name,
+			length: req.body.name.length
 		});
 
 		newProduct.save(function (err) {
@@ -166,6 +168,31 @@ router.get('/product/:id', passport.authenticate('jwt', { session: false }), fun
 	}
 })
 
+
+/* ------------
+CACHE GET /product?name="parche"
+---------------
+HEADERS:
+"Authorization" : "JWT dad7asciha7..."
+--------------- */
+router.get('/product/', passport.authenticate('jwt', { session: false }), function (req, res, next) {
+	if (!req.query.name){
+		return res.status(400).send({ success: false, msg: 'Bad request.' });
+	}
+
+	var token = getToken(req.headers);
+	if (token){
+		productsCache.find(req.query.name,function(products){
+			console.log(products);
+			return res.json({result: products});
+		});
+	} else {
+		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	}
+
+
+})
+
 /* ------------
 GET /product/:id
 ---------------
@@ -191,6 +218,7 @@ router.get('/product/:id', function (req, res) {
 				resp.on('end', () => {
 					category = JSON.parse(category);
 					product.category = category;
+					product.length = product.name.length;
 					product.success = true;
 					// Success!
 					// Write product to cache
