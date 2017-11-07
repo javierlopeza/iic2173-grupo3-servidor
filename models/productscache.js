@@ -55,7 +55,7 @@ function loadProducts(from, callback){
 
 async function load(){
   loadMore = true;
-  for (var counter = 1; loadMore == true; counter += iterations){
+  for (var counter = 0; loadMore == true; counter += iterations){
     loadProducts(counter, function(result){
       loadMore = result;
     });

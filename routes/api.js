@@ -9,10 +9,12 @@ var jwt = require('jsonwebtoken');
 var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
+var Category = require("../models/category");
 const cache = require('../config/cache');
 require('dotenv').config();
 var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
 var productsCache = require('../models/productscache');
+var categoriesCache = require('../models/categoriescache');
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 const NEW_LEGACY_API = 'http://arqss16.ing.puc.cl';
@@ -148,7 +150,16 @@ router.get('/product/', passport.authenticate('jwt', { session: false }), functi
 	if (token){
 		// Find products by name
 		productsCache.find(req.query.name, function(products) {
-			return res.json(products);
+			let promises = [];
+			products.forEach(product => {
+				promises.push(Category.findOne({'id':product.category}, {'_id':0, '__v':0}));
+			})
+			Promise.all(promises).then((categories) => {
+				for (var i = 0; i < products.length; i++) {
+					products[i].category = categories[i];
+				}
+				return res.json(products);
+			});
 		});
 	} else {
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
@@ -175,7 +186,10 @@ router.get('/product/:id', passport.authenticate('jwt', { session: false }), fun
 	.exec((err, data) => {
 		if (data.length) {
 			let product = data[0];
-			return res.json(product);
+			Category.findOne({'id':product.category}, {'_id':0, '__v':0}, (err, category) => { 
+				product.category = category;
+				return res.json(product);
+			});
 		} else {
 			return res.status(400).send({ success: false, msg: 'No existe un producto con ese id.' });
 		}
@@ -206,7 +220,16 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 	.skip(skips)
 	.limit(page_size)
 	.exec((err, products) => {
-		res.json(products);
+		let promises = [];
+		products.forEach(product => {
+			promises.push(Category.findOne({'id':product.category}, {'_id':0, '__v':0}));
+		});
+		Promise.all(promises).then(categories => {
+			for (var i = 0; i < products.length; i++) {
+				products[i].category = categories[i];
+			}
+			return res.json(products);		
+		});
 	});
 });
 
