@@ -368,25 +368,36 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 					rejected_cart.push(product)
 				}
 			});
-			// Write transaction to user history
-			User.findOne({ username: username }, (err, user) => {
-				if (err) throw err;
-				if (!user) {
-					res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
-				} else {
-					// Calculate total price from accepted products
-					let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
-					// Get current user history and push new cart into it
-					let transactions = encryptor.decrypt(user.transactions);
-					transactions.push({"address": req.body.address, "accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
-					// Encrypt transactions array and save it again
-					user.transactions = encryptor.encrypt(transactions);
-					user.save((err) => {
-						if (err) throw err;
-					});
-				}
-			}).then(() => {
-				return res.send({ success: true, rejected: rejected_cart, accepted: accepted_cart });
+
+			// Update carts info (add name and price to products)
+			let completeCarts = [
+				completeCartInfo(accepted_cart),
+				completeCartInfo(rejected_cart)
+			];
+			Promise.all(completeCarts).then((values) => {
+				let accepted_cart = values[0];
+				let rejected_cart = values[1];
+
+				// Write transaction to user history
+				User.findOne({ username: username }, (err, user) => {
+					if (err) throw err;
+					if (!user) {
+						res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+					} else {
+						// Calculate total price from accepted products
+						let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
+						// Get current user history and push new cart into it
+						let transactions = encryptor.decrypt(user.transactions);
+						transactions.push({"address": req.body.address, "accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
+						// Encrypt transactions array and save it again
+						user.transactions = encryptor.encrypt(transactions);
+						user.save((err) => {
+							if (err) throw err;
+						});
+					}
+				}).then(() => {
+					return res.send({ success: true, rejected: rejected_cart, accepted: accepted_cart });		
+				});
 			});
 		}, (err) => {
 			console.log(err);
@@ -412,6 +423,29 @@ registerOrder = function (product, username) {
 			resolve(body);
 		});
 	});
+}
+
+// Complete cart info (add name, price to products)
+completeCartInfo = function (cart) {
+	let completeInfoPromises = [];
+	cart.forEach((product) => {
+		let completeInfo = Product.find({'id':product.product_id}, {'name':1, 'price':1, '_id':0});
+		completeInfoPromises.push(completeInfo);
+	});
+	return new Promise((resolve, reject) => {
+		Promise.all(completeInfoPromises).then((data) => {
+			for (let i = 0; i < cart.length; i++) {
+				let completeInfo = data[i];
+				if (!completeInfo.length) continue;
+				completeInfo = completeInfo[0];
+				cart[i].name = completeInfo.name;
+				cart[i].price = completeInfo.price;
+			}
+			resolve(cart);
+		}).catch(err => {
+			reject(err);
+		});
+	})
 }
 
 
