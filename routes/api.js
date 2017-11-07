@@ -11,6 +11,7 @@ var User = require("../models/user");
 var Product = require("../models/product");
 var Category = require("../models/category");
 const cache = require('../config/cache');
+const mailer = require ('../config/mailer');
 require('dotenv').config();
 var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
 var productsCache = require('../models/productscache');
@@ -377,7 +378,14 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 						});
 					}
 				}).then(() => {
-					return res.send({ success: true, rejected: rejected_cart, accepted: accepted_cart });		
+					let data = {
+						total_accepted: accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0),
+						accepted: accepted_cart,
+						rejected: rejected_cart,
+						success: true
+					};
+					mailer.sendEmail(username, username, "Comprobante de compra", data);
+					return res.send({success: true, accepted: accepted_cart, rejected: rejected_cart});		
 				});
 			});
 		}, (err) => {
