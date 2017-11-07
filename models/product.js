@@ -20,6 +20,10 @@ var ProductSchema = new Schema({
   length: {
     type: Number,
     required: false
+  },
+  price: {
+    type: Number,
+    required: true
   }
 });
 
