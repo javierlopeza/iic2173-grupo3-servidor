@@ -166,6 +166,10 @@ router.get('/product/:id', function (req, res) {
 	if (!/^[0-9]+$/.test(req.param('id'))) return res.status(400).send({ success: false, msg: 'Bad request.' });
 	const product_id = req.param('id');
 
+	// Authenticate
+	var token = getToken(req.headers);
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+
 	// Find product in cached database
 	Product.find({'id':product_id}, {'_id':0, '__v':0})
 	.exec((err, data) => {
@@ -193,19 +197,17 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 
 	// Authenticate
 	var token = getToken(req.headers);
-	if (token) {
-		// Get products paginated
-		const page_size = 10;
-		const skips = page_size * (page_num - 1);
-		Product.find({}, {'_id':0, '__v':0})
-		.skip(skips)
-		.limit(page_size)
-		.exec((err, products) => {
-			res.json(products);
-		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	
+	// Get products paginated
+	const page_size = 10;
+	const skips = page_size * (page_num - 1);
+	Product.find({}, {'_id':0, '__v':0})
+	.skip(skips)
+	.limit(page_size)
+	.exec((err, products) => {
+		res.json(products);
+	});
 });
 
 /* ------------
@@ -215,23 +217,22 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res, next) {
+	// Authenticate
 	var token = getToken(req.headers);
-	if (token) {
-		query_page = req.query.page ? req.query.page : 1
-		// Get products from cache
-		cache.get('categories:' + query_page, (err, categories) => {
-			if (err) throw err;
-			if (categories !== null) {
-				// Return product if it is in the cache
-				return res.json(JSON.parse(categories))
-			} else {
-				// If product is not on cache, call legacy API
-				next();
-			}
-		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+
+	// Get categories from cache
+	query_page = req.query.page ? req.query.page : 1;
+	cache.get('categories:' + query_page, (err, categories) => {
+		if (err) throw err;
+		if (categories !== null) {
+			// Return categories page if it is in the cache
+			return res.json(JSON.parse(categories));
+		} else {
+			// If categories page is not in the cache, call legacy API
+			next();
+		}
+	});
 });
 
 /* ------------
@@ -241,39 +242,40 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res) {
+	// Validate page param
 	if (!req.query.page) req.query.page = 1;
 	if (!/^[0-9]+$/.test(req.query.page)) return res.status(400).send({ success: false, msg: 'Bad request.' });
 	let fixed_page = req.query.page ? req.query.page - 1 : 0;
 	if (fixed_page < 0) return res.status(400).send({ success: false, msg: 'Bad request.' });
 
+	// Authenticate
 	var token = getToken(req.headers);
-	if (token) {
-		http.get(`${NEW_LEGACY_API}/categories/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
-			let data = '';
-			// A chunk of data has been received.
-			resp.on('data', (chunk) => { data += chunk; });
-			// The whole response has been received. Print out the result.
-			resp.on('end', () => {
-				let categories = JSON.parse(data).categories;
-				categories = categories.map((category) => { 
-					return {
-						id: category.pk,
-						context: category.fields.context,
-						area: category.fields.area,
-						group: category.fields.group
-					};
-				})
-				// Write categories to cache
-				query_page = req.query.page ? req.query.page : 1
-				cache.setex("categories:" + query_page, 3600, JSON.stringify(categories));
-				return res.json(categories);
-			});
-		}).on("error", (err) => {
-			return res.status(400).send({ success: false, msg: 'Bad request.' });
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+
+	// Get categories from legacy API
+	http.get(`${NEW_LEGACY_API}/categories/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
+		let data = '';
+		// A chunk of data has been received.
+		resp.on('data', (chunk) => { data += chunk; });
+		// The whole response has been received. Print out the result.
+		resp.on('end', () => {
+			let categories = JSON.parse(data).categories;
+			categories = categories.map((category) => { 
+				return {
+					id: category.pk,
+					context: category.fields.context,
+					area: category.fields.area,
+					group: category.fields.group
+				};
+			})
+			// Write categories to cache
+			query_page = req.query.page ? req.query.page : 1
+			cache.setex("categories:" + query_page, 3600, JSON.stringify(categories));
+			return res.json(categories);
 		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+	}).on("error", (err) => {
+		return res.status(400).send({ success: false, msg: 'Bad request.' });
+	});
 });
 
 
@@ -285,15 +287,11 @@ body = {
 	"cart": [
 		{
 			"product_id": 123,
-			"quantity": 10,
-			"price": 1000,
-			"name": "Parche"
+			"quantity": 10
 		},
 		{
 			"product_id": 33,
-			"quantity": 2,
-			"price": 1500,
-			"name": "Desodorante"
+			"quantity": 2
 		}
 	]
 }
