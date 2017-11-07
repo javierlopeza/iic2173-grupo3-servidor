@@ -3,28 +3,24 @@ var request = require('request');
 
 var Schema = mongoose.Schema;
 
-var ProductSchema = new Schema({
+var CategorySchema = new Schema({
   id: {
     type: Number,
     unique: true,
     required: true
   },
-  category: {
-    type: Object,
-    required: true
-  },
-  name: {
+  group: {
     type: String,
     required: true
   },
-  length: {
-    type: Number,
-    required: false
-  },
-  price: {
-    type: Number,
+  context: {
+    type: String,
     required: true
+  },
+  area: {
+    type: String,
+    required: false
   }
 });
 
-module.exports = mongoose.model('Product', ProductSchema);
+module.exports = mongoose.model('Category', CategorySchema);

@@ -9,9 +9,12 @@ var jwt = require('jsonwebtoken');
 var router = express.Router();
 var User = require("../models/user");
 var Product = require("../models/product");
+var Category = require("../models/category");
 const cache = require('../config/cache');
 require('dotenv').config();
 var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
+var productsCache = require('../models/productscache');
+var categoriesCache = require('../models/categoriescache');
 
 const LEGACY_API = 'http://arqss17.ing.puc.cl:3000';
 const NEW_LEGACY_API = 'http://arqss16.ing.puc.cl';
@@ -66,7 +69,6 @@ router.post('/signup', function (req, res) {
 	}
 });
 
-
 /* ------------
 POST /signin
 ---------------
@@ -99,8 +101,8 @@ router.post('/signin', function (req, res) {
 	});
 });
 
-
 /* ------------
+(not used)
 POST /product
 ---------------
 body = {
@@ -118,7 +120,8 @@ router.post('/product', passport.authenticate('jwt', { session: false }), functi
 		var newProduct = new Product({
 			id: req.body.id,
 			category: req.body.category,
-			name: req.body.name
+			name: req.body.name,
+			length: req.body.name.length
 		});
 
 		newProduct.save(function (err) {
@@ -132,39 +135,34 @@ router.post('/product', passport.authenticate('jwt', { session: false }), functi
 	}
 });
 
-
 /* ------------
-CACHE GET /product/:id
+GET /product?name="parche"
 ---------------
 HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
-router.get('/product/:id', passport.authenticate('jwt', { session: false }), function (req, res, next) {
+router.get('/product/', passport.authenticate('jwt', { session: false }), function (req, res, next) {
+	// Validate name param
+	if (!req.query.name) return res.status(400).send({ success: false, msg: 'Bad request.' });
 
-	if (/^\d+$/.test(req.param('id')) == false) {
-		return res.status(400).send({ success: false, msg: 'Bad request.' });
-	}
-
+	// Authenticate
 	var token = getToken(req.headers);
-	if (token) {
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 
-		// Get product from cache
-		cache.get("product:" + req.param('id'), (err, product) => {
-			if (err) throw err;
-
-			if (product !== null) {
-				// Return product if it is in the cache
-				return res.json(JSON.parse(product))
-			} else {
-				// If product is not on cache, call legacy API
-				next();
-			}
+	// Find products by name
+	productsCache.find(req.query.name, function(products) {
+		let promises = [];
+		products.forEach(product => {
+			promises.push(Category.findOne({'id':product.category}, {'_id':0, '__v':0}));
 		})
-
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
-})
+		Promise.all(promises).then((categories) => {
+			for (var i = 0; i < products.length; i++) {
+				products[i].category = categories[i];
+			}
+			return res.json(products);
+		});
+	});
+});
 
 /* ------------
 GET /product/:id
@@ -172,68 +170,28 @@ GET /product/:id
 HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
-router.get('/product/:id', function (req, res) {
+router.get('/product/:id', passport.authenticate('jwt', { session: false }), function (req, res) {
 	// Check if 'id' is valid
+	if (!/^[0-9]+$/.test(req.param('id'))) return res.status(400).send({ success: false, msg: 'Bad request.' });
+	const product_id = req.param('id');
 
-	// GET product from legacy api
-	http.get(`${LEGACY_API}/productos/${req.param('id')}`, (resp) => {
-		let product = '';
-		resp.on('data', (chunk) => { product += chunk; });
-		resp.on('end', () => {
-			product = JSON.parse(product);
-			if (!Object.keys(product).length) {
-				return res.status(400).send({ success: false, msg: 'Product not found.' });
-			}
-			// GET product category from legacy api
-			http.get(`${LEGACY_API}/categorias/${product.category}`, (resp) => {
-				let category = '';
-				resp.on('data', (chunk) => { category += chunk; });
-				resp.on('end', () => {
-					category = JSON.parse(category);
-					product.category = category;
-					product.success = true;
-					// Success!
-					// Write product to cache
-					cache.setex("product:" + product.id, 3600, JSON.stringify(product));
-					return res.json(product);
-				});
-			}).on("error", (err) => {
-				return res.status(400).send({ success: false, msg: 'Bad request.' });
-			});
-		});
-	}).on("error", (err) => {
-		return res.status(400).send({ success: false, msg: 'Bad request.' });
-	});
-});
-
-
-/* ------------
-CACHE GET /products
----------------
-HEADERS:
-"Authorization" : "JWT dad7asciha7..."
---------------- */
-router.get('/products', passport.authenticate('jwt', { session: false }), function (req, res, next) {
-
+	// Authenticate
 	var token = getToken(req.headers);
-	if (token) {
-		query_page = req.query.page ? req.query.page : 1
-		// Get products from cache
-		cache.get('products:' + query_page, (err, products) => {
-			if (err) throw err;
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 
-			if (products !== null) {
-				// Return product if it is in the cache
-				return res.json(JSON.parse(products))
-			} else {
-				// If product is not on cache, call legacy API
-				next();
-			}
-		})
-
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+	// Find product in cached database
+	Product.find({'id':product_id}, {'_id':0, '__v':0})
+	.exec((err, data) => {
+		if (data.length) {
+			let product = data[0];
+			Category.findOne({'id':product.category}, {'_id':0, '__v':0}, (err, category) => { 
+				product.category = category;
+				return res.json(product);
+			});
+		} else {
+			return res.status(400).send({ success: false, msg: 'No existe un producto con ese id.' });
+		}
+	});
 });
 
 /* ------------
@@ -243,66 +201,34 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/products', passport.authenticate('jwt', { session: false }), function (req, res) {
-	let fixed_page = req.query.page ? req.query.page - 1 : 0;
+	// Validate page param
+	if (!req.query.page) req.query.page = 1;
+	if (!/^[0-9]+$/.test(req.query.page)) return res.status(400).send({ success: false, msg: 'Bad request.' });
+	if (req.query.page == 0) req.query.page = 1;
+	let page_num = req.query.page ? req.query.page : 1;
 
+	// Authenticate
 	var token = getToken(req.headers);
-	if (token) {
-		http.get(`${NEW_LEGACY_API}/products/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
-			let data = '';
-			// A chunk of data has been received.
-			resp.on('data', (chunk) => { data += chunk; });
-			// The whole response has been received. Print out the result.
-			resp.on('end', () => {
-				let products = JSON.parse(JSON.parse(data).products);
-				products = products.map((product) => { 
-					return {
-						id: product.pk,
-						category: product.fields.category,
-						name: product.fields.name, 
-						price: parseInt(product.fields.price)
-					};
-				})
-				// Write products to cache
-				query_page = req.query.page ? req.query.page : 1
-				cache.setex("products:" + query_page, 3600, JSON.stringify(products));
-				return res.json(products);
-			});
-		}).on("error", (err) => {
-			return res.status(400).send({ success: false, msg: 'Bad request.' });
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+	
+	// Get products paginated
+	const page_size = 10;
+	const skips = page_size * (page_num - 1);
+	Product.find({}, {'_id':0, '__v':0})
+	.skip(skips)
+	.limit(page_size)
+	.exec((err, products) => {
+		let promises = [];
+		products.forEach(product => {
+			promises.push(Category.findOne({'id':product.category}, {'_id':0, '__v':0}));
 		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
-});
-
-
-/* ------------
-CACHE GET /categories
----------------
-HEADERS:
-"Authorization" : "JWT dad7asciha7..."
---------------- */
-router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res, next) {
-	var token = getToken(req.headers);
-	if (token) {
-		query_page = req.query.page ? req.query.page : 1
-		// Get products from cache
-		cache.get('categories:' + query_page, (err, categories) => {
-			if (err) throw err;
-
-			if (categories !== null) {
-				// Return product if it is in the cache
-				return res.json(JSON.parse(categories))
-			} else {
-				// If product is not on cache, call legacy API
-				next();
+		Promise.all(promises).then(categories => {
+			for (var i = 0; i < products.length; i++) {
+				products[i].category = categories[i];
 			}
+			return res.json(products);		
 		});
-
-
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+	});
 });
 
 /* ------------
@@ -312,36 +238,25 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.get('/categories', passport.authenticate('jwt', { session: false }), function (req, res) {
-	let fixed_page = req.query.page ? req.query.page - 1 : 0;
+	// Validate page param
+	if (!req.query.page) req.query.page = 1;
+	if (!/^[0-9]+$/.test(req.query.page)) return res.status(400).send({ success: false, msg: 'Bad request.' });
+	if (req.query.page == 0) req.query.page = 1;
+	let page_num = req.query.page ? req.query.page : 1;
 
+	// Authenticate
 	var token = getToken(req.headers);
-	if (token) {
-		http.get(`${NEW_LEGACY_API}/categories/?application_token=${APPLICATION_TOKEN}&page=${fixed_page}`, (resp) => {
-			let data = '';
-			// A chunk of data has been received.
-			resp.on('data', (chunk) => { data += chunk; });
-			// The whole response has been received. Print out the result.
-			resp.on('end', () => {
-				let categories = JSON.parse(JSON.parse(data).categories);
-				categories = categories.map((category) => { 
-					return {
-						id: category.pk,
-						context: category.fields.context,
-						area: category.fields.area,
-						group: category.fields.group
-					};
-				})
-				// Write categories to cache
-				query_page = req.query.page ? req.query.page : 1
-				cache.setex("categories:" + query_page, 3600, JSON.stringify(categories));
-				return res.json(categories);
-			});
-		}).on("error", (err) => {
-			return res.status(400).send({ success: false, msg: 'Bad request.' });
-		});
-	} else {
-		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	}
+	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
+
+	// Get categories paginated
+	const page_size = 10;
+	const skips = page_size * (page_num - 1);
+	Category.find({}, {'_id':0, '__v':0})
+	.skip(skips)
+	.limit(page_size)
+	.exec((err, categories) => {
+		return res.json(categories);				
+	});
 });
 
 
@@ -353,15 +268,11 @@ body = {
 	"cart": [
 		{
 			"product_id": 123,
-			"quantity": 10,
-			"price": 1000,
-			"name": "Parche"
+			"quantity": 10
 		},
 		{
 			"product_id": 33,
-			"quantity": 2,
-			"price": 1500,
-			"name": "Desodorante"
+			"quantity": 2
 		}
 	]
 }
@@ -438,25 +349,36 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 					rejected_cart.push(product)
 				}
 			});
-			// Write transaction to user history
-			User.findOne({ username: username }, (err, user) => {
-				if (err) throw err;
-				if (!user) {
-					res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
-				} else {
-					// Calculate total price from accepted products
-					let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
-					// Get current user history and push new cart into it
-					let transactions = encryptor.decrypt(user.transactions);
-					transactions.push({"address": req.body.address, "accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
-					// Encrypt transactions array and save it again
-					user.transactions = encryptor.encrypt(transactions);
-					user.save((err) => {
-						if (err) throw err;
-					});
-				}
-			}).then(() => {
-				return res.send({ success: true, rejected: rejected_cart, accepted: accepted_cart });
+
+			// Update carts info (add name and price to products)
+			let completeCarts = [
+				completeCartInfo(accepted_cart),
+				completeCartInfo(rejected_cart)
+			];
+			Promise.all(completeCarts).then((values) => {
+				let accepted_cart = values[0];
+				let rejected_cart = values[1];
+
+				// Write transaction to user history
+				User.findOne({ username: username }, (err, user) => {
+					if (err) throw err;
+					if (!user) {
+						res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+					} else {
+						// Calculate total price from accepted products
+						let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
+						// Get current user history and push new cart into it
+						let transactions = encryptor.decrypt(user.transactions);
+						transactions.push({"address": req.body.address, "accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
+						// Encrypt transactions array and save it again
+						user.transactions = encryptor.encrypt(transactions);
+						user.save((err) => {
+							if (err) throw err;
+						});
+					}
+				}).then(() => {
+					return res.send({ success: true, rejected: rejected_cart, accepted: accepted_cart });		
+				});
 			});
 		}, (err) => {
 			console.log(err);
@@ -482,6 +404,29 @@ registerOrder = function (product, username) {
 			resolve(body);
 		});
 	});
+}
+
+// Complete cart info (add name, price to products)
+completeCartInfo = function (cart) {
+	let completeInfoPromises = [];
+	cart.forEach((product) => {
+		let completeInfo = Product.find({'id':product.product_id}, {'name':1, 'price':1, '_id':0});
+		completeInfoPromises.push(completeInfo);
+	});
+	return new Promise((resolve, reject) => {
+		Promise.all(completeInfoPromises).then((data) => {
+			for (let i = 0; i < cart.length; i++) {
+				let completeInfo = data[i];
+				if (!completeInfo.length) continue;
+				completeInfo = completeInfo[0];
+				cart[i].name = completeInfo.name;
+				cart[i].price = completeInfo.price;
+			}
+			resolve(cart);
+		}).catch(err => {
+			reject(err);
+		});
+	})
 }
 
 
