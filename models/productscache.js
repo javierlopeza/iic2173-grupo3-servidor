@@ -5,7 +5,7 @@ var distance = require("../models/worddistance");
 var mongoose = require('mongoose');
 
 var iterations = 1
-var our_token = "6a540a40-d321-4574-a13e-498c38c44bd8"
+var token = "6a540a40-d321-4574-a13e-498c38c44bd8"
 
 
 function sleep(ms){
@@ -19,7 +19,7 @@ function loadProducts(from, callback){
   for (var counter = from; counter < from + iterations; counter++){
 
     request({
-        url: 'http://arqss16.ing.puc.cl/products/?application_token=6a540a40-d321-4574-a13e-498c38c44bd8&page='+ counter, 
+        url: 'http://arqss16.ing.puc.cl/products/?application_token='+token+'&page='+ counter, 
         //'http://arqss16.ing.puc.cl:3000/products?application_token=' + our_token + '&page='+ counter, 
         json: true
       }
@@ -31,8 +31,6 @@ function loadProducts(from, callback){
       if (json){
         for (var i = products.length - 1; i >= 0; i--) {
           product = products[i]
-          console.log("A product");
-          console.log(product.fields.price);
           var newProduct = new Product({
             id: product.pk,
             category: product.fields.category,
@@ -46,7 +44,6 @@ function loadProducts(from, callback){
         }
         results.push(products.length);
         if (results.length == iterations){
-          console.log(results);
           if (results.includes(0)){
             callback(false);
           } else {
