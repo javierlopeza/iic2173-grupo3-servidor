@@ -34,7 +34,6 @@ function loadCategories(from, callback){
             area: category.fields.area
           });
           newCategory.save();
-          console.log(newCategory);
         }
         results.push(categories.length);
         if (results.length == iterations){
