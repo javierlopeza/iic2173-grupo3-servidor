@@ -11,7 +11,7 @@ var User = require("../models/user");
 var Product = require("../models/product");
 var Category = require("../models/category");
 const cache = require('../config/cache');
-const mailer = require ('../config/mailer');
+const mailer = require('../config/mailer');
 require('dotenv').config();
 var encryptor = require('simple-encryptor')(process.env.ENCRYPT_SECRET);
 var productsCache = require('../models/productscache');
@@ -151,10 +151,10 @@ router.get('/product/', passport.authenticate('jwt', { session: false }), functi
 	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 
 	// Find products by name
-	productsCache.find(req.query.name, function(products) {
+	productsCache.find(req.query.name, function (products) {
 		let promises = [];
 		products.forEach(product => {
-			promises.push(Category.findOne({'id':product.category}, {'_id':0, '__v':0}));
+			promises.push(Category.findOne({ 'id': product.category }, { '_id': 0, '__v': 0 }));
 		})
 		Promise.all(promises).then((categories) => {
 			for (var i = 0; i < products.length; i++) {
@@ -181,18 +181,18 @@ router.get('/product/:id', passport.authenticate('jwt', { session: false }), fun
 	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 
 	// Find product in cached database
-	Product.find({'id':product_id}, {'_id':0, '__v':0})
-	.exec((err, data) => {
-		if (data.length) {
-			let product = data[0];
-			Category.findOne({'id':product.category}, {'_id':0, '__v':0}, (err, category) => { 
-				product.category = category;
-				return res.json(product);
-			});
-		} else {
-			return res.status(400).send({ success: false, msg: 'No existe un producto con ese id.' });
-		}
-	});
+	Product.find({ 'id': product_id }, { '_id': 0, '__v': 0 })
+		.exec((err, data) => {
+			if (data.length) {
+				let product = data[0];
+				Category.findOne({ 'id': product.category }, { '_id': 0, '__v': 0 }, (err, category) => {
+					product.category = category;
+					return res.json(product);
+				});
+			} else {
+				return res.status(400).send({ success: false, msg: 'No existe un producto con ese id.' });
+			}
+		});
 });
 
 /* ------------
@@ -211,25 +211,25 @@ router.get('/products', passport.authenticate('jwt', { session: false }), functi
 	// Authenticate
 	var token = getToken(req.headers);
 	if (!token) return res.status(403).send({ success: false, msg: 'Unauthorized.' });
-	
+
 	// Get products paginated
 	const page_size = 10;
 	const skips = page_size * (page_num - 1);
-	Product.find({}, {'_id':0, '__v':0})
-	.skip(skips)
-	.limit(page_size)
-	.exec((err, products) => {
-		let promises = [];
-		products.forEach(product => {
-			promises.push(Category.findOne({'id':product.category}, {'_id':0, '__v':0}));
+	Product.find({}, { '_id': 0, '__v': 0 })
+		.skip(skips)
+		.limit(page_size)
+		.exec((err, products) => {
+			let promises = [];
+			products.forEach(product => {
+				promises.push(Category.findOne({ 'id': product.category }, { '_id': 0, '__v': 0 }));
+			});
+			Promise.all(promises).then(categories => {
+				for (var i = 0; i < products.length; i++) {
+					products[i].category = categories[i];
+				}
+				return res.json(products);
+			});
 		});
-		Promise.all(promises).then(categories => {
-			for (var i = 0; i < products.length; i++) {
-				products[i].category = categories[i];
-			}
-			return res.json(products);		
-		});
-	});
 });
 
 /* ------------
@@ -252,12 +252,12 @@ router.get('/categories', passport.authenticate('jwt', { session: false }), func
 	// Get categories paginated
 	const page_size = 10;
 	const skips = page_size * (page_num - 1);
-	Category.find({}, {'_id':0, '__v':0})
-	.skip(skips)
-	.limit(page_size)
-	.exec((err, categories) => {
-		return res.json(categories);				
-	});
+	Category.find({}, { '_id': 0, '__v': 0 })
+		.skip(skips)
+		.limit(page_size)
+		.exec((err, categories) => {
+			return res.json(categories);
+		});
 });
 
 
@@ -282,6 +282,7 @@ HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------- */
 router.post('/transaction', passport.authenticate('jwt', { session: false }), function (req, res) {
+
 	// Check body params
 	if (!req.body.address || !req.body.cart) {
 		return res.status(400).send({ success: false, msg: 'Bad request.' });
@@ -296,100 +297,125 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 	// Get username from token
 	let username = getUsernameFromToken(token);
 
-	// Check the number of times the user bought each product today
-	const txs_keys = req.body.cart.map(product => `transaction:${username}/${product.product_id}`);
-	const registerPromises = [];
-	const accepted_cart = [];
-	const rejected_cart = [];
-	cache.mget(txs_keys, (err, reply) => {
-		if (err) throw err;
-		// Iterate over products
-		for (let i = 0; i < reply.length; i++) {
-			let count = parseInt(reply[i]);
-			let product = req.body.cart[i];
-
-			// Check if product hasn't been purchased today
-			if (isNaN(count)) {
-				product.count = 1;
-				registerPromises.push(registerOrder(product, username));
-				continue;
-			}
-			// Product has been purchased today
-			if (count < MAX_PER_DAY) {
-				product.count = count + 1;
-				registerPromises.push(registerOrder(product, username));
-				continue;
-			}
-			else {
-				// Reject purchase
-				product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";	
-				rejected_cart.push(product);
-				continue;			
+	// Complete categories info
+	let completeProductsPromises = [];
+	req.body.cart.forEach(product => completeProductsPromises.push(Product.findOne({ 'id': product.product_id }, { '_id': 0, '__v': 0 })));
+	Promise.all(completeProductsPromises).then(completeProducts => {
+		const accepted_cart = [];
+		const rejected_cart = [];
+		
+		// Reject products without category
+		for (let i = req.body.cart.length - 1; i >= 0; i--) {
+			if (completeProducts[i] === null) {
+				req.body.cart[i].rejected_reason = "Información del producto es inválida.";
+				rejected_cart.push(req.body.cart[i]);
+				req.body.cart.splice(i, 1);
+			} else {
+				req.body.cart[i].category = completeProducts[i].category;
+				req.body.cart[i].name = completeProducts[i].name;
+				req.body.cart[i].price = completeProducts[i].price;
 			}
 		}
-	
-		Promise.all(registerPromises).then((values) => {
-			values.forEach((value) => {
-				let product = value.product;		
-				if (value.status.transaction_status_code === 'EXEC') {
-					let tx_key = `transaction:${username}/${product.product_id}`;
-					if (product.count == 1) {
-						// Write transaction into cache for 24 hours (86400 seconds)
-						cache.setex(tx_key, 86400, 1);
-					}
-					else if (product.count <= MAX_PER_DAY) {
-						// Re-write transaction into cache for TTL seconds, with count + 1						
-						cache.ttl(tx_key, (err, ttl) => {
-							cache.setex(tx_key, ttl, product.count);
-						});
-					}
-					accepted_cart.push(product);
-				}
-				else {
-					product.rejected_reason = "Información del producto es inválida.";	
-					rejected_cart.push(product)
-				}
-			});
 
-			// Update carts info (add name and price to products)
-			let completeCarts = [
-				completeCartInfo(accepted_cart),
-				completeCartInfo(rejected_cart)
-			];
-			Promise.all(completeCarts).then((values) => {
-				let accepted_cart = values[0];
-				let rejected_cart = values[1];
+		// Check products categories (!MEDICAMENTOS)
+		let categoriesPromises = [];
+		req.body.cart.forEach(product => categoriesPromises.push(Category.findOne({ 'id': product.category }, { '_id': 0, '__v': 0 })));
+		Promise.all(categoriesPromises).then(categories => {
 
-				// Write transaction to user history
-				User.findOne({ username: username }, (err, user) => {
-					if (err) throw err;
-					if (!user) {
-						res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
-					} else {
-						// Calculate total price from accepted products
-						let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
-						// Get current user history and push new cart into it
-						let transactions = encryptor.decrypt(user.transactions);
-						transactions.push({"address": req.body.address, "accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price});
-						// Encrypt transactions array and save it again
-						user.transactions = encryptor.encrypt(transactions);
-						user.save((err) => {
-							if (err) throw err;
-						});
+			// Remove MEDICAMENTOS products
+			for (let i = req.body.cart.length - 1; i >= 0; i--) {
+				req.body.cart[i].category = categories[i];
+				if (req.body.cart[i].category && req.body.cart[i].category.context === "MEDICAMENTOS") {
+					req.body.cart[i].rejected_reason = "No está permitida la compra de medicamentos.";								
+					rejected_cart.push(req.body.cart[i]);
+					req.body.cart.splice(i, 1);
+				}
+			}
+
+			// Check the number of times the user bought each product today
+			const txs_keys = req.body.cart.map(product => `transaction:${username}/${product.product_id}`);
+			const registerPromises = [];
+			cache.mget(txs_keys, (err, reply) => {
+				if (err) throw err;
+				// Iterate over products
+				for (let i = 0; i < reply.length; i++) {
+					let count = parseInt(reply[i]);
+					let product = req.body.cart[i];
+
+					// Check if product hasn't been purchased today
+					if (isNaN(count)) {
+						product.count = 1;
+						registerPromises.push(registerOrder(product, username));
+						continue;
 					}
-				}).then(() => {
-					let data = {
-						total_accepted: accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0),
-						accepted: accepted_cart,
-						rejected: rejected_cart,
-						success: true
-					};
-					mailer.sendEmail(username, username, "Comprobante de compra", data);
-					return res.send({success: true, accepted: accepted_cart, rejected: rejected_cart});		
+					// Product has been purchased today
+					if (count < MAX_PER_DAY) {
+						product.count = count + 1;
+						registerPromises.push(registerOrder(product, username));
+						continue;
+					}
+					else {
+						// Reject purchase
+						product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";
+						rejected_cart.push(product);
+						continue;
+					}
+				}
+
+				Promise.all(registerPromises).then((values) => {
+					values.forEach((value) => {
+						let product = value.product;
+						if (value.status.transaction_status_code === 'EXEC') {
+							let tx_key = `transaction:${username}/${product.product_id}`;
+							if (product.count == 1) {
+								// Write transaction into cache for 24 hours (86400 seconds)
+								cache.setex(tx_key, 86400, 1);
+							}
+							else if (product.count <= MAX_PER_DAY) {
+								// Re-write transaction into cache for TTL seconds, with count + 1						
+								cache.ttl(tx_key, (err, ttl) => {
+									cache.setex(tx_key, ttl, product.count);
+								});
+							}
+							accepted_cart.push(product);
+						}
+						else {
+							product.rejected_reason = "Información del producto es inválida.";
+							rejected_cart.push(product)
+						}
+					});
+
+					// Write transaction to user history
+					User.findOne({ username: username }, (err, user) => {
+						if (err) throw err;
+						if (!user) {
+							res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+						} else {
+							// Calculate total price from accepted products
+							let accepted_total_price = accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0);
+							// Get current user history and push new cart into it
+							let transactions = encryptor.decrypt(user.transactions);
+							transactions.push({ "address": req.body.address, "accepted": accepted_cart, "rejected": rejected_cart, "date": Date.now(), "total_accepted": accepted_total_price });
+							// Encrypt transactions array and save it again
+							user.transactions = encryptor.encrypt(transactions);
+							user.save((err) => {
+								if (err) throw err;
+							});
+						}
+					}).then(() => {
+						let data = {
+							total_accepted: accepted_cart.map(product => product.price * product.quantity).reduce((a, b) => a + b, 0),
+							accepted: accepted_cart,
+							rejected: rejected_cart,
+							success: true
+						};
+						mailer.sendEmail(username, username, "Comprobante de compra", data);
+						return res.send({ success: true, accepted: accepted_cart, rejected: rejected_cart });
+					});
+				}, (err) => {
+					console.log(err);
 				});
 			});
-		}, (err) => {
-			console.log(err);
 		});
 	});
 });
@@ -413,30 +439,6 @@ registerOrder = function (product, username) {
 		});
 	});
 }
-
-// Complete cart info (add name, price to products)
-completeCartInfo = function (cart) {
-	let completeInfoPromises = [];
-	cart.forEach((product) => {
-		let completeInfo = Product.find({'id':product.product_id}, {'name':1, 'price':1, '_id':0});
-		completeInfoPromises.push(completeInfo);
-	});
-	return new Promise((resolve, reject) => {
-		Promise.all(completeInfoPromises).then((data) => {
-			for (let i = 0; i < cart.length; i++) {
-				let completeInfo = data[i];
-				if (!completeInfo.length) continue;
-				completeInfo = completeInfo[0];
-				cart[i].name = completeInfo.name;
-				cart[i].price = completeInfo.price;
-			}
-			resolve(cart);
-		}).catch(err => {
-			reject(err);
-		});
-	})
-}
-
 
 /* -----------
 POST /token
@@ -532,6 +534,6 @@ getUsernameFromToken = function (token) {
 paginate = function (array, page_size, page_number) {
 	--page_number;
 	return array.slice(page_number * page_size, (page_number + 1) * page_size);
-  }
+}
 
 module.exports = router;

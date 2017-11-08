@@ -74,10 +74,10 @@ function buildHTML(data, name) {
     .map((p) => `
     <tr>
         <td>${p.product_id}</td>
-        <td>${p.name}</td>
-        <td>$${p.price}</td>
+        <td>${p.name ? p.name : "N/A"}</td>
+        <td>${p.price ? "$" + p.price : "N/A"}</td>
         <td>${p.quantity}</td>
-        <td>$${p.quantity * p.price}</td>
+        <td>${p.price ? "$" + (p.quantity * p.price) : "N/A"}</td>
         <td>${p.rejected_reason}</td>        
     </tr>`)
     .reduce((prev, current) => prev + current, '');
