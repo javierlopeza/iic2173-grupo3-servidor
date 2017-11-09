@@ -336,29 +336,32 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 			const txs_keys = req.body.cart.map(product => `transaction:${username}/${product.product_id}`);
 			const registerPromises = [];
 			cache.mget(txs_keys, (err, reply) => {
-				if (err) throw err;
-				// Iterate over products
-				for (let i = 0; i < reply.length; i++) {
-					let count = parseInt(reply[i]);
-					let product = req.body.cart[i];
+				if (err) {
+					console.log(err);
+				} else {
+					// Iterate over products
+					for (let i = 0; i < reply.length; i++) {
+						let count = parseInt(reply[i]);
+						let product = req.body.cart[i];
 
-					// Check if product hasn't been purchased today
-					if (isNaN(count)) {
-						product.count = 1;
-						registerPromises.push(registerOrder(product, username));
-						continue;
-					}
-					// Product has been purchased today
-					if (count < MAX_PER_DAY) {
-						product.count = count + 1;
-						registerPromises.push(registerOrder(product, username));
-						continue;
-					}
-					else {
-						// Reject purchase
-						product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";
-						rejected_cart.push(product);
-						continue;
+						// Check if product hasn't been purchased today
+						if (isNaN(count)) {
+							product.count = 1;
+							registerPromises.push(registerOrder(product, username));
+							continue;
+						}
+						// Product has been purchased today
+						if (count < MAX_PER_DAY) {
+							product.count = count + 1;
+							registerPromises.push(registerOrder(product, username));
+							continue;
+						}
+						else {
+							// Reject purchase
+							product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";
+							rejected_cart.push(product);
+							continue;
+						}
 					}
 				}
 
