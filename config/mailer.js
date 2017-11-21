@@ -1,6 +1,7 @@
-const nodemailer = require('nodemailer')
-const sender = process.env.GMAIL_ACCOUNT
-const password = process.env.GMAIL_PASSWORD
+const nodemailer = require('nodemailer');
+const sender = process.env.GMAIL_ACCOUNT;
+const password = process.env.GMAIL_PASSWORD;
+const FORM_URL = 'https://goo.gl/forms/B1O3iRPyssOGvvgg2';
 
 var transporter = nodemailer.createTransport({
   service: "Gmail",
@@ -9,6 +10,37 @@ var transporter = nodemailer.createTransport({
     pass: password
   }
 })
+
+exports.sendFormEmail = function(username) {
+  var mailOptions = {
+    from: sender,
+    to: username,
+    subject: 'Encuesta de seguimiento de compra',
+    text: "text",
+    html: buildFormHTML(username)
+  }
+
+  return new Promise(function (resolve, reject) {
+    transporter.sendMail(mailOptions, function (error, info) {
+      if (error) {
+        console.log(error)
+        reject(error)
+      } else {
+        console.log('Message sent: ' + info.response)
+        resolve(info.response)
+      }
+    })
+  })
+}
+
+function buildFormHTML(username) { 
+  let content = `
+  <h1> Estimado ${username}, gracias por preferir a Arquitrán SPA</h1>
+  <p>Te invitamos a responder la siguiente encuesta para que nos entregues feedback de tu compra en Arquitrán.</p>
+  <h2>${FORM_URL}</h2>
+  `;
+  return content;
+}
 
 exports.sendEmail = function (receiver, name, subject, data) {
 

@@ -25,6 +25,7 @@ const APPLICATION_TOKEN = '6a540a40-d321-4574-a13e-498c38c44bd8';
 const GROUP_ID = 'G3';
 
 const MAX_PER_DAY = 3;
+const FORM_URL = 'https://goo.gl/forms/B1O3iRPyssOGvvgg2';
 
 /* ------------
 POST /signup
@@ -414,7 +415,8 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 							success: true
 						};
 						mailer.sendEmail(username, username, "Comprobante de compra", data);
-						return res.send({ success: true, accepted: accepted_cart, rejected: rejected_cart });
+						sendFormLink(req.body.platform, username);
+						return res.send({ success: true, accepted: accepted_cart, rejected: rejected_cart, form_url: FORM_URL });
 					});
 				}, (err) => {
 					console.log(err);
@@ -445,13 +447,14 @@ registerOrder = function (product, username) {
 }
 
 // Send Google Form link to origin platform
-sendFormLink = function (platform) {
+sendFormLink = function (platform, username) {
 	switch (platform) {
 		case "telegram":
 			console.log("Sending Google Form link to Telegram");
 			break;
 		case "email":
 			console.log("Sending Google Form link to Email");
+			mailer.sendFormEmail(username);
 			break;
 		case "web":
 			console.log("Sending Google Form link to Web");		
