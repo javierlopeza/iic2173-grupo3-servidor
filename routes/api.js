@@ -24,7 +24,7 @@ const MAILER_API = 'https://arqss6.ing.puc.cl';
 const APPLICATION_TOKEN = '6a540a40-d321-4574-a13e-498c38c44bd8';
 const GROUP_ID = 'G3';
 
-const MAX_PER_DAY = 2;
+const MAX_PER_DAY = 3;
 
 /* ------------
 POST /signup
