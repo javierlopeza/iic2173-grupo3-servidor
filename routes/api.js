@@ -275,7 +275,8 @@ body = {
 			"product_id": 33,
 			"quantity": 2
 		}
-	]
+	],
+	"platform": "telegram" / "email" / "web"
 }
 ---------------
 HEADERS:
@@ -443,43 +444,46 @@ registerOrder = function (product, username) {
 	});
 }
 
-/* -----------
-POST /token
---------------
-body = {
-  username: "arquitran@uc.cl",
-  password: "123123"
+// Send Google Form link to origin platform
+sendFormLink = function (platform) {
+	switch (platform) {
+		case "telegram":
+			console.log("Sending Google Form link to Telegram");
+			break;
+		case "email":
+			console.log("Sending Google Form link to Email");
+			break;
+		case "web":
+			console.log("Sending Google Form link to Web");		
+			break;
+		default:
+			console.log("Sending Google Form link to Default");				
+			break;
+	}
 }
+
+/* -----------
+GET /token
 ---------------
 HEADERS:
 "Authorization" : "JWT dad7asciha7..."
 --------------*/
-router.post('/token', passport.authenticate('jwt', { session: false }), function (req, res) {
+router.get('/token', passport.authenticate('jwt', { session: false }), function (req, res) {
 	var token = getToken(req.headers);
 	if (token) {
-
+		var usr = jwt.verify(token, config.secret);
+		if (!usr) return res.status(401).send({ success: false, msg: 'Authentication failed.' });
 		User.findOne({
-			username: req.body.username
+			username: usr._doc.username
 		}, function (err, user) {
 			if (err) throw err;
-
 			if (!user) {
-				res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
+				return res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
 			} else {
-				// check if password matches
-				user.comparePassword(req.body.password, function (err, isMatch) {
-					if (isMatch && !err) {
-						// if user is found and password is right create a token
-						var token = jwt.sign(user, config.secret);
-						// return the information including token as JSON
-						res.json({ success: true, token: 'JWT ' + token });
-					} else {
-						res.status(401).send({ success: false, msg: 'Authentication failed. Wrong password.' });
-					}
-				});
+				var new_token = jwt.sign(user, config.secret, { expiresIn: '1y' });
+				return res.json({ success: true, token: 'JWT ' + new_token });
 			}
 		});
-
 	} else {
 		return res.status(403).send({ success: false, msg: 'Unauthorized.' });
 	}
