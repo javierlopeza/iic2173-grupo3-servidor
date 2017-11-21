@@ -454,7 +454,9 @@ sendFormLink = function (platform, username) {
 			break;
 		case "email":
 			console.log("Sending Google Form link to Email");
-			mailer.sendFormEmail(username);
+			setTimeout(() => {
+				mailer.sendFormEmail(username);			
+			}, 5 * 60 * 1000);
 			break;
 		case "web":
 			console.log("Sending Google Form link to Web");		
