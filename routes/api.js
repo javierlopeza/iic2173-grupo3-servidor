@@ -92,6 +92,7 @@ router.post('/signin', function (req, res) {
 			user.comparePassword(req.body.password, function (err, isMatch) {
 				if (isMatch && !err) {
 					// if user is found and password is right create a token
+					user.transactions = null;
 					var token = jwt.sign(user, config.secret, { expiresIn: '20m' });
 					// return the information including token as JSON
 					res.json({ success: true, token: 'JWT ' + token });
@@ -485,6 +486,7 @@ router.get('/token', passport.authenticate('jwt', { session: false }), function 
 			if (!user) {
 				return res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
 			} else {
+				user.transactions = null;				
 				var new_token = jwt.sign(user, config.secret, { expiresIn: '1y' });
 				return res.json({ success: true, token: 'JWT ' + new_token });
 			}
