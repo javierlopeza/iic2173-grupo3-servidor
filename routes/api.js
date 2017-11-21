@@ -361,7 +361,7 @@ router.post('/transaction', passport.authenticate('jwt', { session: false }), fu
 						}
 						else {
 							// Reject purchase
-							product.rejected_reason = "No puedes comprar el mismo producto 3 veces en un día.";
+							product.rejected_reason = "No puedes comprar el mismo producto 4 veces en un día.";
 							rejected_cart.push(product);
 							continue;
 						}
